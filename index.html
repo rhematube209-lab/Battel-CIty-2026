@@ -1,0 +1,401 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+    <title>Battle City 2026</title>
+    <meta name="description" content="Battle City 2026 - Modern 3D Arcade Tank Combat Game powered by Babylon.js" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@600;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div id="app">
+      <!-- Top HUD Header -->
+      <header id="hud" class="hud-top">
+        <div class="hud-brand">
+          <span class="hud-logo-dot"></span>
+          <h1 class="hud-title">BATTLE CITY <span class="hud-title-accent">2026</span></h1>
+          <span id="stageBadge" class="hud-stage-badge">STAGE 01</span>
+        </div>
+
+        <div class="hud-gameplay">
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">ENEMIES</span>
+            <span id="enemiesCounter" class="hud-stat-value">12</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">LIVES</span>
+            <span id="livesCounter" class="hud-stat-value">3</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">SCORE</span>
+            <span id="scoreCounter" class="hud-stat-value hud-score">000000</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">TOTAL</span>
+            <span id="totalScoreCounter" class="hud-stat-value hud-total-score">000000</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">STATUS</span>
+            <span id="statusIndicator" class="hud-stat-value hud-status-ok">READY</span>
+          </div>
+          <div class="hud-stat-item">
+            <button id="muteBtn" class="hud-mute-btn" type="button" aria-label="Toggle Sound (M)" title="Toggle Sound [M]">
+              <span id="muteIcon" class="hud-mute-icon">🔊</span>
+            </button>
+          </div>
+          <div class="hud-stat-item">
+            <button id="pauseBtn" class="hud-pause-btn" type="button" aria-label="Pause Game (ESC / P)" title="Pause Game [ESC / P]">
+              <span id="pauseIcon" class="hud-pause-icon">⏸</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Active Battlefield Powerup Indicators (Phase 12) -->
+        <div id="hudPowerups" class="hud-powerups" style="display: none;"></div>
+
+        <div class="hud-debug" id="hudDebug" style="display: none;">
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">FPS</span>
+            <span id="fpsCounter" class="hud-stat-value">60</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">MESHES</span>
+            <span id="meshCounter" class="hud-stat-value">0</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">INPUT</span>
+            <span id="debugInputSource" class="hud-stat-value">KB</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">DIR</span>
+            <span id="debugTouchDir" class="hud-stat-value">-</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">FIRE</span>
+            <span id="debugTouchFire" class="hud-stat-value">0</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">ASPECT</span>
+            <span id="debugAspect" class="hud-stat-value">1.78</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">QUALITY</span>
+            <span id="debugQuality" class="hud-stat-value">DESK</span>
+          </div>
+          <div class="hud-stat-item">
+            <span class="hud-stat-label">DPR</span>
+            <span id="debugDpr" class="hud-stat-value">1</span>
+          </div>
+        </div>
+      </header>
+
+      <!-- 3D Babylon Viewport Canvas -->
+      <canvas id="renderCanvas" touch-action="none"></canvas>
+
+      <!-- Mobile Touch Controls Layer (Phase 9) -->
+      <div id="mobileControls" class="mobile-controls">
+        <div id="joystickContainer" class="joystick-container">
+          <div id="joystickBase" class="joystick-base">
+            <div class="joystick-marker marker-north">▲</div>
+            <div class="joystick-marker marker-east">▶</div>
+            <div class="joystick-marker marker-south">▼</div>
+            <div class="joystick-marker marker-west">◀</div>
+            <div id="joystickKnob" class="joystick-knob">
+              <div class="knob-pip"></div>
+            </div>
+          </div>
+        </div>
+        <div id="fireBtnContainer" class="fire-btn-container">
+          <button id="mobileFireBtn" class="mobile-fire-btn" type="button" aria-label="Fire Cannon">
+            <span class="fire-btn-rim"></span>
+            <span class="fire-btn-text">FIRE</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Rotate Device Portrait Overlay Modal (Phase 9) -->
+      <div id="rotateDeviceOverlay" class="rotate-device-overlay hidden" style="display: none;">
+        <div class="rotate-device-content">
+          <div class="rotate-icon-wrapper">
+            <svg class="rotate-phone-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2"></rect>
+              <path d="M12 18h.01"></path>
+            </svg>
+            <div class="rotate-arrow">↻</div>
+          </div>
+          <h2 class="rotate-title">ROTATE YOUR DEVICE</h2>
+          <p class="rotate-subtitle">BATTLE CITY 2026 IS DESIGNED FOR LANDSCAPE PLAY</p>
+        </div>
+      </div>
+
+      <!-- Game Over Overlay Modal (Phase 6) -->
+      <div id="gameOverOverlay" class="game-over-overlay hidden" style="display: none;">
+        <div class="game-over-modal">
+          <div class="game-over-badge">MISSION FAILED</div>
+          <h1 class="game-over-title">GAME OVER</h1>
+          <p class="game-over-subtitle">COMMAND BASE DESTROYED</p>
+          <div class="game-over-divider"></div>
+          <p class="game-over-prompt">PRESS <span class="key-badge">R</span> TO RESTART</p>
+          <button id="restartBtn" class="game-over-btn" type="button">
+            <span class="btn-text">RESTART MISSION</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Stage Complete Overlay Modal (Phase 8) -->
+      <div id="stageCompleteOverlay" class="stage-complete-overlay hidden" style="display: none;">
+        <div class="stage-complete-modal">
+          <div class="stage-complete-badge">SECTOR SECURED</div>
+          <h1 class="stage-complete-title">STAGE CLEAR</h1>
+          <p id="stageCompleteSubtitle" class="stage-complete-subtitle">STAGE 01 COMPLETE</p>
+          <div class="stage-complete-score-box">
+            <span class="stage-complete-score-label">FINAL SCORE</span>
+            <span id="stageCompleteScore" class="stage-complete-score-value">000000</span>
+          </div>
+          <div id="stageCompleteTally" class="stage-complete-tally"></div>
+          <div class="stage-complete-divider"></div>
+          <p class="stage-complete-prompt">PRESS <span class="key-badge">R</span> TO REPLAY</p>
+          <button id="replayStageBtn" class="stage-complete-btn" type="button">
+            <span class="btn-text">REPLAY STAGE</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Campaign Complete Overlay Modal (Phase 17) -->
+      <div id="campaignCompleteOverlay" class="campaign-complete-overlay hidden" style="display: none;">
+        <div class="campaign-complete-modal">
+          <div class="campaign-complete-badge">CAMPAIGN COMPLETE</div>
+          <h1 class="campaign-complete-title">MISSION NETWORK SECURED</h1>
+          <p class="campaign-complete-subtitle">ALL SECTORS LIBERATED</p>
+
+          <div class="campaign-stages-box">
+            <div class="campaign-stage-row">
+              <span class="campaign-stage-name">01 CYBER OUTPOST</span>
+              <span id="campaignStage1Score" class="campaign-stage-score">000000</span>
+            </div>
+            <div class="campaign-stage-row">
+              <span class="campaign-stage-name">02 IRON DELTA</span>
+              <span id="campaignStage2Score" class="campaign-stage-score">000000</span>
+            </div>
+            <div class="campaign-stage-row">
+              <span class="campaign-stage-name">03 FORGE LINE</span>
+              <span id="campaignStage3Score" class="campaign-stage-score">000000</span>
+            </div>
+          </div>
+
+          <div class="campaign-complete-score-box">
+            <span class="campaign-complete-score-label">TOTAL CAMPAIGN SCORE</span>
+            <span id="campaignCompleteTotalScore" class="campaign-complete-score-value">000000</span>
+          </div>
+
+          <div class="campaign-tally-container">
+            <div class="campaign-tally-header">
+              <span>ENEMIES NEUTRALIZED</span>
+              <span id="campaignTotalEnemies">0</span>
+            </div>
+            <div class="campaign-archetype-row">
+              <span class="tally-label">STANDARD</span>
+              <span id="campaignStandardKills" class="tally-val">0</span>
+            </div>
+            <div class="campaign-archetype-row">
+              <span class="tally-label">FAST</span>
+              <span id="campaignFastKills" class="tally-val">0</span>
+            </div>
+            <div class="campaign-archetype-row">
+              <span class="tally-label">ARMOR</span>
+              <span id="campaignArmorKills" class="tally-val">0</span>
+            </div>
+            <div class="campaign-lives-row">
+              <span class="tally-label">REMAINING LIVES</span>
+              <span id="campaignRemainingLives" class="tally-val">0</span>
+            </div>
+          </div>
+
+          <div class="campaign-complete-divider"></div>
+          <p class="campaign-complete-prompt">PRESS <span class="key-badge">ENTER</span> FOR NEW CAMPAIGN</p>
+          <button id="newCampaignBtn" class="campaign-complete-btn" type="button">
+            <span class="btn-text">NEW CAMPAIGN</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Phase 18 Title Screen Overlay -->
+      <div id="titleScreenOverlay" class="title-screen-overlay hidden" style="display: none;">
+        <div class="title-screen-container">
+          <div class="title-screen-badge">CYBERNETIC DEFENSE PROTOCOL</div>
+          <h1 class="title-screen-main">BATTLE CITY <span class="title-screen-accent">2026</span></h1>
+          <p class="title-screen-subtitle">TACTICAL ARMORED NETWORK</p>
+
+          <div class="title-screen-actions">
+            <button id="startCampaignBtn" class="title-btn title-btn-primary" type="button">
+              START CAMPAIGN
+            </button>
+            <button id="titleSettingsBtn" class="title-btn title-btn-secondary" type="button">
+              SETTINGS
+            </button>
+            <button id="titleControlsBtn" class="title-btn title-btn-secondary" type="button">
+              CONTROLS
+            </button>
+          </div>
+
+          <div class="title-screen-footer">
+            <span class="footer-tag">3 STAGE CAMPAIGN</span>
+            <span class="footer-tag">HIGH INTENSITY TACTICAL ARCADE</span>
+            <span class="footer-tag footer-version"></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 18 Pause Menu Overlay -->
+      <div id="pauseMenuOverlay" class="pause-menu-overlay hidden" style="display: none;">
+        <div class="pause-menu-modal">
+          <div class="pause-header">
+            <span class="pause-status-dot"></span>
+            <h2 class="pause-title">SYSTEM PAUSED</h2>
+          </div>
+
+          <div class="pause-actions">
+            <button id="pauseResumeBtn" class="pause-btn pause-btn-primary" type="button">
+              RESUME
+            </button>
+            <button id="pauseRestartBtn" class="pause-btn" type="button">
+              RESTART STAGE
+            </button>
+            <button id="pauseSettingsBtn" class="pause-btn" type="button">
+              SETTINGS
+            </button>
+            <button id="pauseReturnTitleBtn" class="pause-btn pause-btn-danger" type="button">
+              RETURN TO TITLE
+            </button>
+          </div>
+
+          <!-- Compact In-Game Confirmation Modal -->
+          <div id="pauseConfirmDialog" class="pause-confirm-dialog hidden" style="display: none;">
+            <p id="pauseConfirmMessage" class="confirm-message">RESTART CURRENT STAGE?</p>
+            <div class="confirm-actions">
+              <button id="pauseConfirmOkBtn" class="confirm-btn confirm-btn-ok" type="button">CONFIRM</button>
+              <button id="pauseConfirmCancelBtn" class="confirm-btn confirm-btn-cancel" type="button">CANCEL</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 18 Settings Overlay -->
+      <div id="settingsOverlay" class="settings-overlay hidden" style="display: none;">
+        <div class="settings-modal">
+          <div class="settings-header">
+            <h2 class="settings-title">SYSTEM SETTINGS</h2>
+          </div>
+
+          <div class="settings-body">
+            <div class="settings-row">
+              <div class="settings-label-box">
+                <span class="settings-label">AUDIO</span>
+                <span class="settings-hint">Toggle all synthesized audio and sound effects</span>
+              </div>
+              <button id="settingsAudioBtn" class="settings-toggle-btn" type="button" aria-pressed="true">
+                ON
+              </button>
+            </div>
+
+            <div class="settings-row">
+              <div class="settings-label-box">
+                <span class="settings-label">REDUCED MOTION</span>
+                <span class="settings-hint">Suppress camera shake and intensive screen motion</span>
+              </div>
+              <button id="settingsMotionBtn" class="settings-toggle-btn" type="button" aria-pressed="false">
+                SYSTEM
+              </button>
+            </div>
+          </div>
+
+          <div class="settings-footer">
+            <button id="settingsBackBtn" class="settings-back-btn" type="button">
+              BACK
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 18 Controls Overlay -->
+      <div id="controlsOverlay" class="controls-overlay hidden" style="display: none;">
+        <div class="controls-modal">
+          <div class="controls-header">
+            <h2 class="controls-title">TACTICAL CONTROLS</h2>
+          </div>
+
+          <div class="controls-body">
+            <div class="controls-section">
+              <h3 class="controls-section-title">DESKTOP KEYBOARD</h3>
+              <div class="control-row">
+                <span class="control-key">WASD / ARROWS</span>
+                <span class="control-desc">MOVE TANK</span>
+              </div>
+              <div class="control-row">
+                <span class="control-key">SPACE</span>
+                <span class="control-desc">FIRE CANNON</span>
+              </div>
+              <div class="control-row">
+                <span class="control-key">ESC / P</span>
+                <span class="control-desc">PAUSE / RESUME</span>
+              </div>
+              <div class="control-row">
+                <span class="control-key">M</span>
+                <span class="control-desc">MUTE AUDIO</span>
+              </div>
+              <div class="control-row">
+                <span class="control-key">R</span>
+                <span class="control-desc">RESTART STAGE (PLAYING / GAME OVER)</span>
+              </div>
+            </div>
+
+            <div class="controls-section">
+              <h3 class="controls-section-title">MOBILE TOUCH (LANDSCAPE)</h3>
+              <div class="control-row">
+                <span class="control-key">LEFT JOYSTICK</span>
+                <span class="control-desc">DIGITAL CARDINAL MOVEMENT</span>
+              </div>
+              <div class="control-row">
+                <span class="control-key">RIGHT FIRE BUTTON</span>
+                <span class="control-desc">CONTINUOUS RAPID FIRE</span>
+              </div>
+              <div class="control-row">
+                <span class="control-key">HUD PAUSE BUTTON</span>
+                <span class="control-desc">PAUSE GAME</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="controls-footer">
+            <button id="controlsBackBtn" class="controls-back-btn" type="button">
+              BACK
+            </button>
+          </div>
+        </div>
+      </div>
+
+      <!-- Phase 19 Fatal Error Overlay (Boot Resilience) -->
+      <div id="fatalErrorOverlay" class="fatal-error-overlay hidden" style="display: none;" role="alertdialog" aria-modal="true" aria-labelledby="fatalErrorTitle" aria-describedby="fatalErrorMessage">
+        <div class="fatal-error-modal">
+          <div class="fatal-error-badge">BOOT FAILURE</div>
+          <h1 id="fatalErrorTitle" class="fatal-error-title">UNABLE TO INITIALIZE GAME</h1>
+          <p id="fatalErrorMessage" class="fatal-error-message">A critical system initialization error occurred.</p>
+          <div id="fatalErrorCode" class="fatal-error-code" style="display: none;"></div>
+          <div class="fatal-error-actions">
+            <button id="fatalReloadBtn" class="fatal-error-btn" type="button" aria-label="Reload Game">
+              <span class="btn-text">RELOAD</span>
+            </button>
+          </div>
+          <div class="fatal-error-footer">
+            <span class="fatal-footer-version"></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

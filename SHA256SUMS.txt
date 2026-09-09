@@ -1,0 +1,8 @@
+﻿# BATTLE CITY 2026 v1.0.0 — SHA-256 Checksums
+# Generated: 2026-09-10 (clean workspace build)
+# Build tool: vite v6.4.3 | Node.js v24.13.1
+
+2b06a876f42b3998e8abfce8281cc48976c8ffb13e2ca4c5455d1a3086436b48  battle-city-2026-v1.0.0.zip
+93b04371be3b0579e707bac88d1c8e9830c866800d7e2e560322a473cfb69692 dist/index.html
+635e8643cfb82042dc937592665fd47a94662fcaf6ac93677708a6e5dcb1efdc  dist/assets/index-DbSIrHdX.js
+d74a48fea6905b29f89677b8e4711de68d1b5d311c156ea27306c668be402e6f  dist/assets/index-D4I9sLDV.css

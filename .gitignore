@@ -1,0 +1,36 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+
+# Vite temp
+.vite-temp/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# Release artifacts (large binaries — download from Releases)
+battle-city-2026-*.zip
+
+# Clean-room verify workspace (sibling dir, not tracked)
+# bc2026-release-clean/ (sibling, not inside this repo)
+# bc2026-extracted-verify/ (sibling, not inside this repo)
