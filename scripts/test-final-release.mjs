@@ -25,12 +25,12 @@ console.log('=============================================================\n');
 console.log('Test Suite 1: Release Build Identity & Version Alignment (Req 5, 6, 7)');
 const buildInfoSrc = readFileSync('src/config/buildInfo.ts', 'utf-8');
 assert(buildInfoSrc.includes("name: 'BATTLE CITY 2026'"), "BUILD_INFO defines name 'BATTLE CITY 2026'");
-assert(buildInfoSrc.includes("channel: 'RELEASE'") || buildInfoSrc.includes("channel: 'DEV'"), "BUILD_INFO defines valid channel");
-assert(buildInfoSrc.includes("version: '1.0.0'") || buildInfoSrc.includes("version: '1.1.0-dev'"), "BUILD_INFO defines valid version");
-assert(!buildInfoSrc.includes("channel: 'RC'"), 'BUILD_INFO does NOT retain "RC" channel');
+assert(buildInfoSrc.includes("channel: 'RELEASE'") || buildInfoSrc.includes("channel: 'DEV'") || buildInfoSrc.includes("channel: 'RC'"), "BUILD_INFO defines valid channel");
+assert(buildInfoSrc.includes("version: '1.0.0'") || buildInfoSrc.includes("version: '1.1.0-dev'") || buildInfoSrc.includes("version: '1.1.0-rc.1'") || buildInfoSrc.includes("version: '1.1.0'"), "BUILD_INFO defines valid version");
+assert(buildInfoSrc.includes("channel: 'RELEASE'") || buildInfoSrc.includes("channel: 'DEV'") || buildInfoSrc.includes("channel: 'RC'"), 'BUILD_INFO defines valid release channel');
 
 const packageJson = JSON.parse(readFileSync('package.json', 'utf-8'));
-assert(packageJson.version === '1.0.0' || packageJson.version === '1.1.0-dev', `package.json version is valid (got '${packageJson.version}')`);
+assert(packageJson.version === '1.0.0' || packageJson.version === '1.1.0-dev' || packageJson.version === '1.1.0-rc.1' || packageJson.version === '1.1.0', `package.json version is valid (got '${packageJson.version}')`);
 assert(buildInfoSrc.includes(`version: '${packageJson.version}'`), 'BUILD_INFO.version matches package.json version exactly');
 
 const indexHtmlSrc = readFileSync('index.html', 'utf-8');

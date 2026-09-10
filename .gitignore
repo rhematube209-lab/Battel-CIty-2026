@@ -34,3 +34,6 @@ battle-city-2026-*.zip
 # Clean-room verify workspace (sibling dir, not tracked)
 # bc2026-release-clean/ (sibling, not inside this repo)
 # bc2026-extracted-verify/ (sibling, not inside this repo)
+
+# Scratch test directories
+scratch/

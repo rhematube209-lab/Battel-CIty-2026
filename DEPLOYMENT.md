@@ -1,6 +1,6 @@
 # BATTLE CITY 2026 — Production Deployment Guide
 
-**Version**: `1.0.0` [RELEASE]  
+**Version**: `1.1.0` [RELEASE]  
 **Architecture**: Fully Static Single-Page Client (HTML5 / ES Modules / WebGL2 / Web Audio)
 
 ---
@@ -11,7 +11,7 @@ Battle City 2026 requires **no backend server, no database, no server-side rende
 
 ### Step-by-Step Deployment:
 1. **Obtain or Build Release Artifact**:
-   - Use the pre-built `battle-city-2026-v1.0.0.zip` release package, OR
+   - Use the pre-built `battle-city-2026-v1.1.0.zip` release package, OR
    - Build cleanly from source:
      ```bash
      npm ci
@@ -20,7 +20,7 @@ Battle City 2026 requires **no backend server, no database, no server-side rende
      The deployable assets are located in the `dist/` directory.
 
 2. **Extract Archive**:
-   If using the release package `battle-city-2026-v1.0.0.zip`, extract its contents directly. The root will contain:
+   If using the release package `battle-city-2026-v1.1.0.zip`, extract its contents directly. The root of the archive contains `index.html` and the `assets/` directory (no outer `dist/` folder):
    ```
    index.html
    assets/
@@ -33,7 +33,7 @@ Battle City 2026 requires **no backend server, no database, no server-side rende
    Upload `index.html` and the `assets/` directory to the root of your web server / static bucket.
 
 4. **Serve via HTTPS**:
-   HTTPS is strongly recommended for production deployments to ensure modern browser features (such as low-latency Web Audio and fullscreen APIs) operate without security restrictions.
+   HTTPS is strongly recommended for production deployments to ensure modern browser features (such as low-latency Web Audio, fullscreen APIs, and touch pointers) operate without security restrictions.
 
 5. **Ensure Correct MIME Types**:
    Configure the web server to serve modern Web standards MIME types:
@@ -47,7 +47,7 @@ Battle City 2026 requires **no backend server, no database, no server-side rende
 7. **Execute Post-Deploy Smoke Checklist** (see below).
 
 8. **Execute Rollback if Necessary**:
-   If any critical failure occurs, roll back immediately to the previous verified release artifact (`battle-city-2026-v0.9.0-rc.1.zip`).
+   If any critical failure occurs, roll back immediately to the previous verified release artifact (`battle-city-2026-v1.0.0.zip`).
 
 ---
 
@@ -65,21 +65,21 @@ Battle City 2026 requires **no backend server, no database, no server-side rende
 
 ## Post-Deploy Smoke Checklist
 
-After deployment, verify the following 13 items directly in the production environment:
+After deployment, verify the following items directly in the production environment:
 
 - [ ] **Page Opens**: Root URL loads cleanly without blank screen or 404 assets.
-- [ ] **Title Badge**: Displays `BATTLE CITY 2026` with version `v1.0.0`.
-- [ ] **Canvas Visible**: Babylon WebGL canvas initializes with dark industrial arena.
-- [ ] **Start Campaign**: Clicking **START CAMPAIGN** (or pressing Enter) transitions cleanly into Stage 01.
-- [ ] **Move & Fire**: Player tank navigates cardinally (WASD/Arrows) and fires cannon (Spacebar).
-- [ ] **Audio Unlock**: Sound effects (engine treads, cannon fire, explosions) play after first user interaction.
-- [ ] **Mute Control**: Pressing **M** or toggling HUD/Settings audio mutes sound immediately.
-- [ ] **Pause & Resume**: Pressing **ESC** or **P** opens Pause Menu, freezes gameplay, and stops movement audio; resuming returns cleanly to action.
-- [ ] **Settings Modal**: Opening settings allows toggling Reduced Motion and Audio; closing returns to calling screen.
-- [ ] **Stage Loading & Progression**: Destroying all stage enemies triggers Stage Clear and carries lives into the next stage.
-- [ ] **TOTAL Score**: Campaign total score increments monotonically without transient duplicates.
-- [ ] **Mobile Landscape**: On mobile/touch devices, virtual joystick and fire button function in landscape orientation; portrait mode displays rotation prompt.
-- [ ] **Zero Console Errors**: Developer Tools console records 0 uncaught errors or unhandled promise rejections.
+- [ ] **Title Screen Active**: Displays Title, Subtitle, and "4 STAGE CAMPAIGN" badge.
+- [ ] **Start Campaign**: Clicking "START CAMPAIGN" transitions into Stage 01 (Cyber Outpost).
+- [ ] **Tactical Command HUD**:
+  - Desktop: 340px right sidebar displays stage badge, directive, minimap radar, live lives counter, and score.
+  - Mobile: Transitions to compact HUD layout.
+- [ ] **Pause System**: Clicking `#tchPauseBtn` or pressing `ESC`/`P` pauses game simulation and opens Pause Menu. Resuming unpauses cleanly.
+- [ ] **Tank Controls**: Tank navigates via `WASD`/Arrows with cardinal alignment and fires cannon with `Space`.
+- [ ] **Terrain Interaction**: Brick blocks degrade under cannon fire; steel blocks deflect bullets.
+- [ ] **Audio Lifecycle**: Audio plays on user gesture; mute toggle silences audio effects cleanly.
+- [ ] **DevTools Cleanliness**: Browser console is free of uncaught errors, 404 network failures, or unhandled exceptions.
+- [ ] **Security & Isolation**: `window.__GAME_INSTANCE__` is `undefined`. No `devStage` parameters trigger test modes.
+- [ ] **Rollback Readiness**: `battle-city-2026-v1.0.0.zip` is backed up and immediately deployable if rollback is required.
 
 ---
 
@@ -94,7 +94,7 @@ After deployment, verify the following 13 items directly in the production envir
 - Severe rendering artifacts or broken shaders.
 
 ### Rollback Procedure:
-1. Locate the previously verified release package: `battle-city-2026-v0.9.0-rc.1.zip`.
+1. Locate the previously verified release package: `battle-city-2026-v1.0.0.zip`.
 2. Extract and overwrite the web server web root (`index.html` and `assets/`).
 3. Purge edge CDN caches for `index.html`.
 4. Re-run the Post-Deploy Smoke Checklist to confirm recovery.
