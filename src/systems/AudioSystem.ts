@@ -43,6 +43,8 @@ export class AudioSystem {
     powerup: 0,
     cryo: 0,
     conveyor: 0,
+    stageIntro: 0,
+    nexusRelay: 0,
   };
   private maxVoices: { [category: string]: number } = {
     brick: 3,
@@ -52,6 +54,8 @@ export class AudioSystem {
     powerup: 3,
     cryo: 2,
     conveyor: 2,
+    stageIntro: 1,
+    nexusRelay: 1,
   };
 
   // Telemetry for testing and diagnostics
@@ -733,6 +737,124 @@ export class AudioSystem {
 
     osc.onended = cleanup;
     setTimeout(cleanup, 160);
+  }
+
+  /**
+   * Stage 04 Intro Accent: Short tactical relay activation sequence (~0.95s duration).
+   * Procedurally synthesizes a dual-oscillator resonant relay sequence with zero melodic identity.
+   * Voice bounded (max 1), strictly routed through sfxGain -> masterGain, fully one-shot.
+   */
+  public playStage04Intro(): void {
+    this.recordTelemetry('stage04Intro');
+    if (this.isMutedState || !this.ctx || !this.sfxGain) return;
+    if (this.activeVoices.stageIntro >= this.maxVoices.stageIntro) return;
+
+    this.activeVoices.stageIntro++;
+    const now = this.ctx.currentTime;
+
+    // Tactical dual oscillator node setup
+    const osc1 = this.ctx.createOscillator();
+    const osc2 = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gainNode = this.ctx.createGain();
+
+    // Frequency sweep: stepped tactical network lock (160Hz -> 320Hz -> 480Hz)
+    osc1.type = 'sawtooth';
+    osc1.frequency.setValueAtTime(160, now);
+    osc1.frequency.linearRampToValueAtTime(320, now + 0.35);
+    osc1.frequency.linearRampToValueAtTime(480, now + 0.65);
+
+    // Harmonic pulse layer
+    osc2.type = 'sine';
+    osc2.frequency.setValueAtTime(320, now);
+    osc2.frequency.exponentialRampToValueAtTime(640, now + 0.55);
+
+    // Resonant bandpass filter simulating tactical network relay ionization
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(400, now);
+    filter.frequency.exponentialRampToValueAtTime(1200, now + 0.60);
+    filter.frequency.linearRampToValueAtTime(300, now + 0.95);
+    filter.Q.setValueAtTime(3.5, now);
+
+    // Envelope
+    gainNode.gain.setValueAtTime(0.001, now);
+    gainNode.gain.linearRampToValueAtTime(0.22, now + 0.08); // Quick tactical attack
+    gainNode.gain.exponentialRampToValueAtTime(0.15, now + 0.65);
+    gainNode.gain.exponentialRampToValueAtTime(0.001, now + 0.95);
+
+    // Connections
+    osc1.connect(filter);
+    osc2.connect(filter);
+    filter.connect(gainNode);
+    gainNode.connect(this.sfxGain);
+
+    osc1.start(now);
+    osc2.start(now);
+    osc1.stop(now + 0.95);
+    osc2.stop(now + 0.95);
+
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      this.activeVoices.stageIntro = Math.max(0, this.activeVoices.stageIntro - 1);
+      try { osc1.disconnect(); } catch {}
+      try { osc2.disconnect(); } catch {}
+      try { filter.disconnect(); } catch {}
+      try { gainNode.disconnect(); } catch {}
+    };
+
+    osc1.onended = cleanup;
+    setTimeout(cleanup, 1100);
+  }
+
+  /**
+   * Nexus command base destruction accent layer: high-energy electrical dispersal zap (~0.32s).
+   * Accompanies playBaseDestroyed() specifically for Stage 04 Nexus theme.
+   */
+  public playNexusRelayDestruction(): void {
+    this.recordTelemetry('nexusRelayDestruction');
+    if (this.isMutedState || !this.ctx || !this.sfxGain) return;
+    if (this.activeVoices.nexusRelay >= this.maxVoices.nexusRelay) return;
+
+    this.activeVoices.nexusRelay++;
+    const now = this.ctx.currentTime;
+
+    const osc = this.ctx.createOscillator();
+    const filter = this.ctx.createBiquadFilter();
+    const gain = this.ctx.createGain();
+
+    osc.type = 'sawtooth';
+    osc.frequency.setValueAtTime(880, now);
+    osc.frequency.exponentialRampToValueAtTime(110, now + 0.30);
+
+    filter.type = 'bandpass';
+    filter.frequency.setValueAtTime(1400, now);
+    filter.frequency.exponentialRampToValueAtTime(250, now + 0.30);
+    filter.Q.setValueAtTime(4.0, now);
+
+    gain.gain.setValueAtTime(0.24, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + 0.32);
+
+    osc.connect(filter);
+    filter.connect(gain);
+    gain.connect(this.sfxGain);
+
+    osc.start(now);
+    osc.stop(now + 0.32);
+
+    let cleanedUp = false;
+    const cleanup = () => {
+      if (cleanedUp) return;
+      cleanedUp = true;
+      this.activeVoices.nexusRelay = Math.max(0, this.activeVoices.nexusRelay - 1);
+      try { osc.disconnect(); } catch {}
+      try { filter.disconnect(); } catch {}
+      try { gain.disconnect(); } catch {}
+    };
+
+    osc.onended = cleanup;
+    setTimeout(cleanup, 400);
   }
 
   /**

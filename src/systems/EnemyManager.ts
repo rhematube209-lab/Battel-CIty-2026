@@ -212,6 +212,32 @@ export class EnemyManager {
   }
 
   /**
+   * Returns remaining count of each enemy archetype in the current stage.
+   */
+  public getArchetypeComposition(): { standard: number; fast: number; armor: number } {
+    const totalCounts: Record<EnemyArchetypeId, number> = {
+      [EnemyArchetypeId.STANDARD]: 0,
+      [EnemyArchetypeId.FAST]: 0,
+      [EnemyArchetypeId.ARMOR]: 0,
+    };
+
+    if (this.sequence) {
+      for (let i = 0; i < this.sequence.length; i++) {
+        const id = this.sequence[i];
+        if (totalCounts[id] !== undefined) {
+          totalCounts[id]++;
+        }
+      }
+    }
+
+    return {
+      standard: Math.max(0, totalCounts[EnemyArchetypeId.STANDARD] - (this.archetypeKills[EnemyArchetypeId.STANDARD] || 0)),
+      fast: Math.max(0, totalCounts[EnemyArchetypeId.FAST] - (this.archetypeKills[EnemyArchetypeId.FAST] || 0)),
+      armor: Math.max(0, totalCounts[EnemyArchetypeId.ARMOR] - (this.archetypeKills[EnemyArchetypeId.ARMOR] || 0)),
+    };
+  }
+
+  /**
    * Deploys active enemies up to maxActiveEnemies for benchmarking or stress scenarios.
    */
   public forceSpawnMax(): void {

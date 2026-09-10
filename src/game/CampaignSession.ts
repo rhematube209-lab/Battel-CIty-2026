@@ -113,7 +113,7 @@ export class CampaignSession {
     lives: number,
     archetypeKills: Record<EnemyArchetypeId, number> = { STANDARD: 0, FAST: 0, ARMOR: 0 }
   ): boolean {
-    const isTerminal = stageDef ? (stageDef.nextStageId === null || stageDef.stageNumber === 3) : false;
+    const isTerminal = stageDef ? (stageDef.nextStageId === null) : false;
     return this.recordStageResult(
       {
         stageId: stageDef ? stageDef.id : 'stage01',

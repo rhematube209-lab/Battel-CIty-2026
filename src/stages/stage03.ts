@@ -62,7 +62,7 @@ export const STAGE_03_DEFINITION: StageDefinition = {
     accentColor: '#ff6600',
   },
 
-  nextStageId: null, // Terminal stage in 3-stage campaign
+  nextStageId: 'stage04',
 };
 
 export const stage03 = STAGE_03_DEFINITION;

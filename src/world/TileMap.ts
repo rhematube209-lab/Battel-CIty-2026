@@ -19,6 +19,7 @@ import { Direction } from '../game/Direction';
 import { Tile, BrickQuadrant, SolidAABB } from './Tile';
 import { Base } from './Base';
 import { LevelDefinition, validateLevelDefinition } from '../levels/LevelDefinition';
+import { StagePresentationConfig } from '../stages/StageDefinition';
 
 export interface BrickDamageResult {
   destroyed: boolean;
@@ -58,7 +59,11 @@ export class TileMap {
    * Runtime gameplay strictly requires a typed LevelDefinition.
    * The TileType[][] union overload is retained solely for backward compatibility with legacy test suites.
    */
-  constructor(scene: Scene, levelInput: LevelDefinition | TileType[][]) {
+  constructor(
+    scene: Scene,
+    levelInput: LevelDefinition | TileType[][],
+    presentation?: StagePresentationConfig
+  ) {
     this.scene = scene;
 
     let levelData: TileType[][];
@@ -74,6 +79,10 @@ export class TileMap {
     this.initialLevelData = levelData.map((row) => [...row]);
     this.initMasterMeshes();
     this.buildMap(levelData);
+
+    if (this.baseEntity && presentation) {
+      this.baseEntity.setPresentation(presentation);
+    }
 
     if (DEBUG) {
       this.buildDebugGrid();
@@ -411,7 +420,7 @@ export class TileMap {
    * Seamlessly reconfigures the TileMap for a new stage without recreating master meshes or materials.
    * Disposes previous stage-owned instances and base entity, then constructs new level geometry.
    */
-  public loadLevel(levelInput: LevelDefinition): void {
+  public loadLevel(levelInput: LevelDefinition, presentation?: StagePresentationConfig): void {
     validateLevelDefinition(levelInput);
     this.levelDefinition = levelInput;
     const levelData = levelInput.tiles.map((row) => [...row]);
@@ -439,6 +448,12 @@ export class TileMap {
 
     // 4. Rebuild tiles and Base for the new level
     this.buildMap(levelData);
+
+    // 5. Apply stage presentation if base entity was created
+    const base = this.baseEntity as Base | undefined;
+    if (base && presentation) {
+      base.setPresentation(presentation);
+    }
   }
 
   /**
@@ -567,12 +582,12 @@ export class TileMap {
     this.enemySpawnMat.emissiveColor = new Color3(0.5, 0.2, 0.0);
     this.sharedMaterials.push(this.enemySpawnMat);
 
-    // 6. Cryo Floor Material (Dark graphite cooling plate + cold cyan coolant channels)
+    // 6. Cryo Floor Material (Dark graphite cooling plate + cold crystalline sheen + cyan coolant channels)
     const cryoMat = new StandardMaterial('cryoMat', this.scene);
-    cryoMat.diffuseColor = new Color3(0.15, 0.22, 0.28);
-    cryoMat.specularColor = new Color3(0.4, 0.75, 0.95);
-    cryoMat.specularPower = 48;
-    cryoMat.emissiveColor = new Color3(0.04, 0.12, 0.18);
+    cryoMat.diffuseColor = new Color3(0.12, 0.20, 0.28);
+    cryoMat.specularColor = new Color3(0.55, 0.85, 1.0); // Cold crystalline sheen
+    cryoMat.specularPower = 64;
+    cryoMat.emissiveColor = new Color3(0.06, 0.16, 0.26); // Distinct frost blue-white edge
     this.sharedMaterials.push(cryoMat);
 
     const plateBase = MeshBuilder.CreateBox(
@@ -605,8 +620,14 @@ export class TileMap {
     );
     channel2.position.y = 0.005;
 
+    // Crystalline cooling plate outer frost rim
+    const cryoRimN = MeshBuilder.CreateBox('cryoRimN', { width: TILE_SIZE * 0.94, depth: 0.06, height: VISUAL_HEIGHTS.CRYO + 0.008 }, this.scene);
+    cryoRimN.position.set(0, 0.004, (TILE_SIZE * 0.94) / 2);
+    const cryoRimS = MeshBuilder.CreateBox('cryoRimS', { width: TILE_SIZE * 0.94, depth: 0.06, height: VISUAL_HEIGHTS.CRYO + 0.008 }, this.scene);
+    cryoRimS.position.set(0, 0.004, -(TILE_SIZE * 0.94) / 2);
+
     this.masterCryo = Mesh.MergeMeshes(
-      [plateBase, channel1, channel2],
+      [plateBase, channel1, channel2, cryoRimN, cryoRimS],
       true,
       true,
       undefined,
@@ -617,12 +638,12 @@ export class TileMap {
     this.masterCryo.material = cryoMat;
     this.masterCryo.setEnabled(false);
 
-    // 7. Mag-Drive Conveyor Material & Master Mesh (Dark industrial track bed + magnetic rail + amber chevron indicators)
+    // 7. Mag-Drive Conveyor Material & Master Mesh (Dark industrial track bed + magnetic rail + high-contrast amber chevrons)
     const conveyorMat = new StandardMaterial('conveyorMat', this.scene);
-    conveyorMat.diffuseColor = new Color3(0.18, 0.20, 0.22);
-    conveyorMat.specularColor = new Color3(0.75, 0.55, 0.20);
+    conveyorMat.diffuseColor = new Color3(0.16, 0.18, 0.20);
+    conveyorMat.specularColor = new Color3(0.85, 0.65, 0.25);
     conveyorMat.specularPower = 48;
-    conveyorMat.emissiveColor = new Color3(0.18, 0.10, 0.02);
+    conveyorMat.emissiveColor = new Color3(0.24, 0.14, 0.02); // High-contrast amber glow
     this.sharedMaterials.push(conveyorMat);
 
     const convBase = MeshBuilder.CreateBox(
@@ -645,25 +666,41 @@ export class TileMap {
     );
     convRail.position.y = 0.005;
 
-    // Chevron indicators pointing along +Z (North in local space)
-    const chevronL = MeshBuilder.CreateBox(
-      'convChevronL',
-      { width: 0.08, depth: 0.36, height: VISUAL_HEIGHTS.CONVEYOR + 0.015 },
+    // Dual sequential chevron indicators pointing along +Z (North in local space) for unmistakable direction readability
+    const chevronL1 = MeshBuilder.CreateBox(
+      'convChevronL1',
+      { width: 0.08, depth: 0.34, height: VISUAL_HEIGHTS.CONVEYOR + 0.016 },
       this.scene
     );
-    chevronL.rotation.y = Math.PI / 4;
-    chevronL.position.set(-0.25, 0.008, 0);
+    chevronL1.rotation.y = Math.PI / 4;
+    chevronL1.position.set(-0.25, 0.008, -0.32);
 
-    const chevronR = MeshBuilder.CreateBox(
-      'convChevronR',
-      { width: 0.08, depth: 0.36, height: VISUAL_HEIGHTS.CONVEYOR + 0.015 },
+    const chevronR1 = MeshBuilder.CreateBox(
+      'convChevronR1',
+      { width: 0.08, depth: 0.34, height: VISUAL_HEIGHTS.CONVEYOR + 0.016 },
       this.scene
     );
-    chevronR.rotation.y = -Math.PI / 4;
-    chevronR.position.set(0.25, 0.008, 0);
+    chevronR1.rotation.y = -Math.PI / 4;
+    chevronR1.position.set(0.25, 0.008, -0.32);
+
+    const chevronL2 = MeshBuilder.CreateBox(
+      'convChevronL2',
+      { width: 0.08, depth: 0.34, height: VISUAL_HEIGHTS.CONVEYOR + 0.016 },
+      this.scene
+    );
+    chevronL2.rotation.y = Math.PI / 4;
+    chevronL2.position.set(-0.25, 0.008, 0.28);
+
+    const chevronR2 = MeshBuilder.CreateBox(
+      'convChevronR2',
+      { width: 0.08, depth: 0.34, height: VISUAL_HEIGHTS.CONVEYOR + 0.016 },
+      this.scene
+    );
+    chevronR2.rotation.y = -Math.PI / 4;
+    chevronR2.position.set(0.25, 0.008, 0.28);
 
     this.masterConveyor = Mesh.MergeMeshes(
-      [convBase, convRail, chevronL, chevronR],
+      [convBase, convRail, chevronL1, chevronR1, chevronL2, chevronR2],
       true,
       true,
       undefined,

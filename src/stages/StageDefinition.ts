@@ -20,6 +20,21 @@ export interface StageThemeConfig {
 }
 
 /**
+ * Optional environmental and audio presentation configuration for a stage.
+ * Decouples stage-specific visual identity and audio accents from Game.ts.
+ */
+export interface StagePresentationConfig {
+  ambientColor?: string;
+  accentColor?: string;
+  secondaryAccentColor?: string;
+  hazardColor?: string;
+  pulseEnabled?: boolean;
+  pulseRate?: number;
+  floorTheme?: 'DEFAULT' | 'NEXUS';
+  stageAudioProfile?: 'DEFAULT' | 'NEXUS';
+}
+
+/**
  * Authoritative, reusable data definition for a complete playable stage.
  * Decouples all stage-specific parameters from Game.ts and runtime systems.
  */
@@ -41,6 +56,7 @@ export interface StageDefinition {
   powerupMilestones: readonly PowerupMilestone[];
 
   stageTheme?: StageThemeConfig;
+  presentation?: StagePresentationConfig;
 
   nextStageId: string | null;
 }
@@ -122,4 +138,17 @@ export function validateStageDefinition(stage: StageDefinition): void {
     throw new Error('Stage validation error: Missing level definition in stage');
   }
   validateLevelDefinition(stage.level);
+
+  // Validate optional presentation config
+  if (stage.presentation) {
+    if (
+      stage.presentation.pulseRate !== undefined &&
+      (typeof stage.presentation.pulseRate !== 'number' || stage.presentation.pulseRate <= 0)
+    ) {
+      throw new Error(
+        `Stage validation error: presentation pulseRate must be > 0, got ${stage.presentation.pulseRate}`
+      );
+    }
+  }
 }
+

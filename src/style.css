@@ -2265,3 +2265,788 @@ body.reduced-motion *::after {
   color: var(--text-dim);
 }
 
+/* =========================================================================
+   PHASE 23: TACTICAL COMMAND HUD + INDUSTRIAL BATTLEFIELD FRAME
+   ========================================================================= */
+
+.game-shell {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: flex;
+  flex-direction: row;
+  overflow: hidden;
+}
+
+.battlefield-shell {
+  flex: 1;
+  height: 100%;
+  position: relative;
+  overflow: hidden;
+  background: #030407;
+  box-shadow: inset 0 0 50px rgba(0, 0, 0, 0.95), inset 0 0 15px rgba(0, 0, 0, 0.9);
+}
+
+/* Battlefield Frame (Phase 23 Visual Refinement) */
+.battlefield-frame {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 5;
+  pointer-events: none;
+  box-shadow: inset 0 0 30px rgba(0, 0, 0, 0.9);
+  border: 1px solid rgba(0, 229, 255, 0.15);
+}
+
+/* Corner Mechanical Housings */
+.bf-corner {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  pointer-events: none;
+  background: rgba(14, 20, 30, 0.85);
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  padding: 3px;
+}
+
+.bf-corner-tl {
+  top: 6px;
+  left: 6px;
+  border-width: 2px 1px 1px 2px;
+}
+
+.bf-corner-tr {
+  top: 6px;
+  right: 6px;
+  border-width: 2px 2px 1px 1px;
+}
+
+.bf-corner-bl {
+  bottom: 6px;
+  left: 6px;
+  border-width: 1px 1px 2px 2px;
+}
+
+.bf-corner-br {
+  bottom: 6px;
+  right: 6px;
+  border-width: 1px 2px 2px 1px;
+}
+
+.bf-corner-screw {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: #475569;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  box-shadow: inset 0 1px 1px rgba(0, 0, 0, 0.8);
+  display: inline-block;
+}
+
+/* Armored Side Rail Assemblies (Outer perimeter) */
+.bf-side-rail {
+  position: absolute;
+  top: 46px;
+  bottom: 46px;
+  width: 32px;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  align-items: center;
+  background: linear-gradient(180deg, rgba(16, 22, 32, 0.85) 0%, rgba(10, 14, 22, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.8);
+  padding: 8px 0;
+  z-index: 6;
+}
+
+.bf-side-left {
+  left: 6px;
+  border-left: 2px solid rgba(0, 229, 255, 0.35);
+}
+
+.bf-side-right {
+  right: 6px;
+  border-right: 2px solid rgba(0, 229, 255, 0.35);
+}
+
+.bf-plate {
+  width: 22px;
+  height: 14px;
+  background: rgba(22, 30, 44, 0.85);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 4px rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.bf-plate-mid {
+  height: 100px;
+}
+
+.bf-vent-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 18px;
+}
+
+.bf-vent-grid span {
+  display: block;
+  width: 100%;
+  height: 2px;
+  background: #05080d;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.bf-stencil-tag {
+  writing-mode: vertical-rl;
+  font-family: var(--font-tech);
+  font-size: 7px;
+  letter-spacing: 2px;
+  color: rgba(0, 229, 255, 0.45);
+  text-transform: uppercase;
+}
+
+/* Machined Transverse Rails (Top & Bottom) */
+.bf-rail {
+  position: absolute;
+  left: 48px;
+  right: 48px;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-family: var(--font-display);
+  font-size: 8px;
+  letter-spacing: 2px;
+  color: rgba(0, 229, 255, 0.5);
+  pointer-events: none;
+  background: rgba(10, 15, 24, 0.8);
+  border: 1px solid rgba(0, 229, 255, 0.2);
+  padding: 0 12px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 8px rgba(0, 0, 0, 0.7);
+}
+
+.bf-rail-top {
+  top: 6px;
+  border-top: 1px solid rgba(0, 229, 255, 0.35);
+}
+
+.bf-rail-bottom {
+  bottom: 6px;
+  border-bottom: 1px solid rgba(0, 229, 255, 0.35);
+}
+
+.bf-rail-flank {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.bf-status-led {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.led-cyan {
+  background: var(--accent-cyan);
+  box-shadow: 0 0 6px var(--accent-cyan);
+}
+
+.led-amber {
+  background: var(--accent-orange);
+  box-shadow: 0 0 6px var(--accent-orange);
+}
+
+.bf-hazard-bars {
+  width: 28px;
+  height: 4px;
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(255, 170, 0, 0.6),
+    rgba(255, 170, 0, 0.6) 4px,
+    transparent 4px,
+    transparent 8px
+  );
+  display: inline-block;
+}
+
+/* Tactical Command Sidebar (Desktop Wide) */
+.tactical-command-hud {
+  width: clamp(280px, 20vw, 340px);
+  min-width: 280px;
+  max-width: 340px;
+  height: 100%;
+  background: linear-gradient(180deg, #0b0f17 0%, #06080d 100%);
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  box-shadow: inset 2px 0 16px rgba(0, 0, 0, 0.8), -6px 0 30px rgba(0, 0, 0, 0.7);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(0, 229, 255, 0.3) transparent;
+}
+
+.tch-inner {
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  gap: 6px;
+  flex: 1;
+}
+
+.tch-section {
+  background: linear-gradient(180deg, rgba(16, 22, 32, 0.8) 0%, rgba(10, 14, 22, 0.9) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-top: 1px solid rgba(255, 255, 255, 0.14);
+  border-bottom: 1px solid rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  padding: 6px 8px;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+
+.tch-section-label {
+  font-family: var(--font-tech);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+}
+
+/* Module 1: Console Header & Stage Identity */
+.tch-module-header {
+  border-left: 3px solid var(--accent-cyan);
+}
+
+.tch-brand-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tch-logo-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent-cyan);
+  box-shadow: 0 0 8px var(--accent-cyan);
+  animation: pulse-dot 2s infinite ease-in-out;
+}
+
+.tch-title-group {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+}
+
+.tch-brand-title {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  color: #ffffff;
+  line-height: 1.1;
+}
+
+.tch-brand-accent {
+  color: var(--accent-orange);
+  text-shadow: 0 0 10px rgba(255, 140, 0, 0.6);
+}
+
+.tch-brand-subtitle {
+  font-family: var(--font-tech);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  color: rgba(0, 229, 255, 0.7);
+}
+
+.tch-version-tag {
+  font-family: var(--font-tech);
+  font-size: 9px;
+  font-weight: 600;
+  color: var(--text-dim);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 2px 6px;
+  border-radius: 3px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.tch-stage-subpanel {
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+  margin-top: 6px;
+  padding-top: 6px;
+}
+
+.tch-stage-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.tch-stage-badge {
+  font-family: var(--font-display);
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 2px;
+  color: var(--accent-cyan);
+}
+
+.tch-status-badge {
+  font-family: var(--font-tech);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  padding: 1px 6px;
+  border-radius: 3px;
+}
+
+.badge-ok {
+  color: var(--accent-green);
+  background: rgba(0, 255, 136, 0.1);
+  border: 1px solid rgba(0, 255, 136, 0.3);
+}
+
+.badge-dead {
+  color: #ff4444;
+  background: rgba(255, 68, 68, 0.15);
+  border: 1px solid rgba(255, 68, 68, 0.4);
+}
+
+.tch-stage-name {
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 900;
+  letter-spacing: 1.8px;
+  color: #ffffff;
+  margin-top: 2px;
+}
+
+/* Module 2: Tactical Topology & Minimap */
+.tch-module-minimap {
+  align-items: center;
+  padding: 8px;
+}
+
+.tch-minimap-frame {
+  position: relative;
+  width: 195px;
+  height: 195px;
+  margin: 2px auto 6px auto;
+  border: 1px solid rgba(0, 229, 255, 0.3);
+  background: #06090e;
+  box-shadow: 0 0 16px rgba(0, 0, 0, 0.8), inset 0 0 10px rgba(0, 0, 0, 0.7);
+}
+
+.tch-minimap-corner {
+  position: absolute;
+  width: 8px;
+  height: 8px;
+  border-color: var(--accent-cyan);
+  border-style: solid;
+  pointer-events: none;
+}
+
+.corner-tl { top: -1px; left: -1px; border-width: 2px 0 0 2px; }
+.corner-tr { top: -1px; right: -1px; border-width: 2px 2px 0 0; }
+.corner-bl { bottom: -1px; left: -1px; border-width: 0 0 2px 2px; }
+.corner-br { bottom: -1px; right: -1px; border-width: 0 2px 2px 0; }
+
+#tacticalMinimap {
+  display: block;
+  width: 195px;
+  height: 195px;
+  image-rendering: pixelated;
+}
+
+.tch-minimap-legend {
+  display: flex;
+  justify-content: center;
+  gap: 14px;
+  font-family: var(--font-tech);
+  font-size: 9px;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+}
+
+.legend-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.legend-pip {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.pip-player { background: var(--accent-cyan); box-shadow: 0 0 4px var(--accent-cyan); }
+.pip-enemy { background: #f97316; box-shadow: 0 0 4px #f97316; }
+.pip-base { background: #00e5ff; border: 1px solid #ffffff; }
+
+/* Module 3: Hostile Quota & Threat Composition */
+.tch-module-hostiles .tch-enemy-main {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.tch-big-val {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1;
+  transition: transform 0.15s ease, color 0.15s ease;
+}
+
+.tch-total-divider {
+  font-family: var(--font-tech);
+  font-size: 18px;
+  color: var(--text-dim);
+}
+
+.tch-total-val {
+  font-family: var(--font-display);
+  font-size: 18px;
+  color: var(--text-dim);
+  font-weight: 800;
+}
+
+.tch-archetype-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.tch-archetype-pill {
+  background: rgba(0, 0, 0, 0.45);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  padding: 3px 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.arch-tag {
+  font-family: var(--font-tech);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.arch-val {
+  font-family: var(--font-display);
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--accent-cyan);
+}
+
+/* Module 4: Strategic Defense Grid (Lives & Base) */
+.tch-status-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.tch-status-box {
+  background: rgba(0, 0, 0, 0.4);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 3px;
+  padding: 6px 8px;
+}
+
+.tch-box-label {
+  font-family: var(--font-tech);
+  font-size: 9px;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+  margin-bottom: 2px;
+}
+
+.tch-box-val-group {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+
+.tch-unit-tag {
+  font-family: var(--font-tech);
+  font-size: 10px;
+  font-weight: 700;
+  color: var(--accent-cyan);
+}
+
+.tch-lives-val {
+  font-family: var(--font-display);
+  font-size: 24px;
+  font-weight: 900;
+  color: #ffffff;
+  line-height: 1;
+}
+
+.tch-node-status {
+  font-family: var(--font-display);
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 1.5px;
+  line-height: 1.3;
+}
+
+.status-secure {
+  color: var(--accent-green);
+  text-shadow: 0 0 8px rgba(0, 255, 136, 0.5);
+}
+
+.status-lost {
+  color: #ff4444;
+  text-shadow: 0 0 8px rgba(255, 68, 68, 0.6);
+}
+
+/* Module 5: Mission Telemetry (Score & Total) */
+.tch-module-telemetry {
+  background: linear-gradient(180deg, rgba(14, 20, 30, 0.9) 0%, rgba(8, 12, 18, 0.95) 100%);
+}
+
+.tch-score-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 4px;
+}
+
+.tch-score-row:last-child {
+  margin-bottom: 0;
+}
+
+.tch-score-label {
+  font-family: var(--font-tech);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  color: var(--text-dim);
+}
+
+.tch-score-val {
+  font-family: var(--font-display);
+  font-size: 17px;
+  font-weight: 800;
+  letter-spacing: 1.8px;
+  color: #ffffff;
+}
+
+.tch-score-val-accent {
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 900;
+  letter-spacing: 2.2px;
+  color: var(--accent-cyan);
+  text-shadow: 0 0 10px rgba(0, 229, 255, 0.5);
+}
+
+/* Module 6: Active Systems (Compact Standby) */
+.tch-module-systems {
+  padding: 6px 10px;
+}
+
+.tch-systems-header {
+  margin-bottom: 2px;
+}
+
+.tch-powerups-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tch-powerup-standby {
+  font-family: var(--font-tech);
+  font-size: 10px;
+  letter-spacing: 1.2px;
+  color: var(--text-dim);
+  line-height: 1.2;
+}
+
+.tch-powerup-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 3px 6px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-family: var(--font-display);
+  font-weight: 700;
+}
+
+.tch-powerup-item.od {
+  background: rgba(255, 140, 0, 0.15);
+  border: 1px solid rgba(255, 140, 0, 0.4);
+  color: var(--accent-orange);
+}
+
+.tch-powerup-item.ag {
+  background: rgba(0, 229, 255, 0.15);
+  border: 1px solid rgba(0, 229, 255, 0.4);
+  color: var(--accent-cyan);
+}
+
+.tch-powerup-item.st {
+  background: rgba(168, 85, 247, 0.15);
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  color: #c084fc;
+}
+
+/* Module 7: Mission Directive */
+.tch-module-mission .tch-mission-text {
+  font-family: var(--font-tech);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 1.2px;
+  color: #f1f5f9;
+  line-height: 1.3;
+}
+
+/* Module 8: Hardware Controls Footer */
+.tch-controls-footer {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-top: auto;
+  padding-top: 6px;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.tch-btn {
+  font-family: var(--font-display);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 1.5px;
+  color: #ffffff;
+  background: linear-gradient(180deg, rgba(20, 28, 40, 0.9) 0%, rgba(12, 16, 24, 0.95) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-top: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.1), 0 2px 4px rgba(0, 0, 0, 0.6);
+  border-radius: 4px;
+  padding: 8px 10px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  transition: all 0.2s ease;
+}
+
+.tch-btn:hover {
+  background: linear-gradient(180deg, rgba(28, 38, 54, 0.95) 0%, rgba(16, 22, 34, 0.98) 100%);
+  border-color: var(--accent-cyan);
+  box-shadow: 0 0 12px rgba(0, 229, 255, 0.35);
+}
+
+.tch-btn:focus-visible {
+  outline: 2px solid var(--accent-cyan);
+  outline-offset: 2px;
+}
+
+.tch-btn-pause:hover {
+  border-color: var(--accent-orange);
+  box-shadow: 0 0 12px rgba(255, 140, 0, 0.35);
+}
+
+/* Pulses & Micro-animations */
+.tch-pulse-highlight {
+  animation: tch-pulse-score 0.35s ease;
+}
+
+@keyframes tch-pulse-score {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.15); color: var(--accent-cyan); text-shadow: 0 0 12px var(--accent-cyan); }
+  100% { transform: scale(1); }
+}
+
+.tch-pulse-alert {
+  animation: tch-pulse-enemy 0.35s ease;
+}
+
+@keyframes tch-pulse-enemy {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.2); color: var(--accent-orange); text-shadow: 0 0 12px var(--accent-orange); }
+  100% { transform: scale(1); }
+}
+
+.tch-pulse-danger {
+  animation: tch-pulse-danger-anim 0.45s ease;
+}
+
+@keyframes tch-pulse-danger-anim {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.25); color: #ff4444; text-shadow: 0 0 14px #ff4444; }
+  100% { transform: scale(1); }
+}
+
+/* Compact Desktop Height Optimization (1280x720, 1366x768) */
+@media (max-height: 760px) {
+  .tch-inner {
+    padding: 5px 8px;
+    gap: 4px;
+  }
+  .tch-section {
+    padding: 4px 6px;
+  }
+  .tch-stage-subpanel {
+    margin-top: 2px;
+    padding-top: 2px;
+  }
+  .tch-stage-name {
+    font-size: 14px;
+  }
+  .tch-big-val {
+    font-size: 24px;
+  }
+  .tch-lives-val {
+    font-size: 20px;
+  }
+  .tch-score-val {
+    font-size: 15px;
+  }
+  .tch-score-val-accent {
+    font-size: 17px;
+  }
+  .tch-controls-footer {
+    padding-top: 4px;
+    gap: 6px;
+  }
+  .tch-btn {
+    padding: 6px 8px;
+    font-size: 10px;
+  }
+}
+
+
+

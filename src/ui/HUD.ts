@@ -1,6 +1,10 @@
 import { DEBUG } from '../game/constants';
 import { PowerupType } from '../config/powerups';
 import { ActivePowerupStatus } from '../systems/PowerupSystem';
+import { TacticalCommandHUD } from './TacticalCommandHUD';
+import { TacticalHUDSnapshot, EnemyArchetypeComposition } from './TacticalHUDSnapshot';
+import { TileType } from '../game/constants';
+import { MinimapEntityProvider } from './TacticalMinimap';
 
 export interface DebugTelemetry {
   fps: number;
@@ -13,12 +17,18 @@ export interface DebugTelemetry {
   dpr?: number;
 }
 
+export type HUDLayoutMode = 'COMPACT' | 'TACTICAL';
+
 /**
  * HUD Controller for Battle City 2026.
- * Efficiently manages arcade gameplay stats: STAGE, ENEMIES, LIVES, SCORE.
+ * Single authoritative coordinator for gameplay telemetry.
+ * Serves both:
+ * 1. CompactHUD (top bar for mobile landscape / narrow viewports)
+ * 2. TacticalCommandHUD (right-side futuristic command console for desktop >= 1100px)
  * Uses value caching to minimize DOM layout thrashing.
  */
 export class HUD {
+  // Compact HUD DOM Elements
   private enemiesElement: HTMLElement | null;
   private livesElement: HTMLElement | null;
   private scoreElement: HTMLElement | null;
@@ -37,13 +47,19 @@ export class HUD {
   private debugDprEl: HTMLElement | null;
 
   private cachedStageNumber: number = -1;
+  private cachedStageName: string = 'CYBER OUTPOST';
+  private cachedMissionTitle: string = 'NEUTRALIZE ENEMY RECON UNITS';
   private cachedEnemies: number = -1;
+  private cachedTotalEnemies: number = -1;
   private cachedLives: number = -1;
   private cachedScore: string = '';
   private cachedTotalScore: string = '';
   private cachedStatus: string = '';
   private cachedFps: number = -1;
   private cachedMeshes: number = -1;
+  private cachedActivePowerups: ActivePowerupStatus[] = [];
+  private cachedArchetypes?: EnemyArchetypeComposition;
+  private cachedCommandNodeStatus: 'SECURE' | 'LOST' = 'SECURE';
 
   private powerupsContainer: HTMLElement | null;
   private cachedEffectsKey: string = '';
@@ -55,6 +71,13 @@ export class HUD {
   private onToggleMuteCallback?: () => void;
   private onPauseCallback?: () => void;
   private onKeyDownHandler: (e: KeyboardEvent) => void;
+
+  // Tactical Desktop Command Sidebar Component
+  private tacticalHUD: TacticalCommandHUD;
+  private mode: HUDLayoutMode = 'COMPACT';
+  private isVisibleState: boolean = false;
+  private isMutedState: boolean = false;
+  private isPausedState: boolean = false;
 
   constructor() {
     this.hudContainer = document.getElementById('hud');
@@ -84,11 +107,22 @@ export class HUD {
       this.debugContainer.style.display = DEBUG ? 'flex' : 'none';
     }
 
+    // Initialize Tactical Desktop Sidebar
+    this.tacticalHUD = new TacticalCommandHUD('tacticalCommandHud');
+
     this.muteButton?.addEventListener('click', () => {
       this.onToggleMuteCallback?.();
     });
 
     this.pauseButton?.addEventListener('click', () => {
+      this.onPauseCallback?.();
+    });
+
+    this.tacticalHUD.setOnToggleMute(() => {
+      this.onToggleMuteCallback?.();
+    });
+
+    this.tacticalHUD.setOnPause(() => {
       this.onPauseCallback?.();
     });
 
@@ -98,6 +132,54 @@ export class HUD {
       }
     };
     window.addEventListener('keydown', this.onKeyDownHandler);
+
+    // Initial responsive layout mode evaluation
+    this.syncResponsiveMode();
+  }
+
+  /**
+   * Sets explicit layout mode ('COMPACT' or 'TACTICAL').
+   */
+  public setMode(mode: HUDLayoutMode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    this.applyVisibility();
+  }
+
+  public getMode(): HUDLayoutMode {
+    return this.mode;
+  }
+
+  /**
+   * Evaluates viewport width and device profile to choose COMPACT vs TACTICAL.
+   * Desktop (>= 1100px and non-touch) uses TACTICAL.
+   * Mobile / narrow (< 1100px) uses COMPACT.
+   */
+  public syncResponsiveMode(isMobileDevice: boolean = false): void {
+    const width = typeof window !== 'undefined' ? window.innerWidth : 1280;
+    const shouldBeTactical = !isMobileDevice && width >= 1100;
+    this.setMode(shouldBeTactical ? 'TACTICAL' : 'COMPACT');
+  }
+
+  /**
+   * Applies visibility based on current isVisibleState and layout mode.
+   */
+  private applyVisibility(): void {
+    if (!this.isVisibleState) {
+      if (this.hudContainer) this.hudContainer.style.display = 'none';
+      this.tacticalHUD.setVisible(false);
+      return;
+    }
+
+    if (this.mode === 'TACTICAL') {
+      // On desktop wide: hide top compact HUD to avoid duplicate telemetry
+      if (this.hudContainer) this.hudContainer.style.display = 'none';
+      this.tacticalHUD.setVisible(true);
+    } else {
+      // On mobile / narrow: show top compact HUD, hide sidebar
+      if (this.hudContainer) this.hudContainer.style.display = 'flex';
+      this.tacticalHUD.setVisible(false);
+    }
   }
 
   /**
@@ -111,9 +193,12 @@ export class HUD {
    * Controls HUD visibility across game states.
    */
   public setVisible(visible: boolean): void {
-    if (this.hudContainer) {
-      this.hudContainer.style.display = visible ? 'flex' : 'none';
-    }
+    this.isVisibleState = visible;
+    this.applyVisibility();
+  }
+
+  public isVisible(): boolean {
+    return this.isVisibleState;
   }
 
   /**
@@ -124,23 +209,52 @@ export class HUD {
   }
 
   /**
-   * Updates mute icon display.
+   * Updates mute icon display across both compact and tactical interfaces.
    */
   public setMuted(muted: boolean): void {
+    this.isMutedState = muted;
     if (this.muteIcon) {
       this.muteIcon.textContent = muted ? '🔇' : '🔊';
     }
+    this.tacticalHUD.setMuted(muted);
   }
 
   /**
-   * Updates HUD stage badge with formatted stage label (e.g. STAGE 01, STAGE 07).
+   * Notifies HUD of game pause state.
    */
-  public setStageNumber(stageNumber: number): void {
+  public setPaused(paused: boolean): void {
+    this.isPausedState = paused;
+    this.tacticalHUD.setPaused(paused);
+  }
+
+  public setReducedMotion(reduced: boolean): void {
+    this.tacticalHUD.setReducedMotion(reduced);
+  }
+
+  /**
+   * Updates HUD stage badge with formatted stage label.
+   */
+  public setStageNumber(stageNumber: number, stageName?: string, missionTitle?: string): void {
+    if (stageName) this.cachedStageName = stageName;
+    if (missionTitle) this.cachedMissionTitle = missionTitle;
+
     if (this.cachedStageNumber === stageNumber) return;
     this.cachedStageNumber = stageNumber;
     if (this.stageElement) {
       this.stageElement.textContent = `STAGE ${stageNumber.toString().padStart(2, '0')}`;
     }
+    this.dispatchTacticalSnapshot();
+  }
+
+  public setStageMetadata(stageNumber: number, stageName: string, missionTitle: string, totalEnemies: number): void {
+    this.cachedStageNumber = stageNumber;
+    this.cachedStageName = stageName;
+    this.cachedMissionTitle = missionTitle;
+    this.cachedTotalEnemies = totalEnemies;
+    if (this.stageElement) {
+      this.stageElement.textContent = `STAGE ${stageNumber.toString().padStart(2, '0')}`;
+    }
+    this.dispatchTacticalSnapshot();
   }
 
   /**
@@ -154,49 +268,58 @@ export class HUD {
    * Triggers brief pulse animation on the enemies counter when an enemy is destroyed.
    */
   public pulseEnemies(): void {
-    if (!this.enemiesElement) return;
-    this.enemiesElement.classList.remove('hud-pulse-alert');
-    void this.enemiesElement.offsetWidth;
-    this.enemiesElement.classList.add('hud-pulse-alert');
-    setTimeout(() => {
-      this.enemiesElement?.classList.remove('hud-pulse-alert');
-    }, 350);
+    if (this.enemiesElement) {
+      this.enemiesElement.classList.remove('hud-pulse-alert');
+      void this.enemiesElement.offsetWidth;
+      this.enemiesElement.classList.add('hud-pulse-alert');
+      setTimeout(() => {
+        this.enemiesElement?.classList.remove('hud-pulse-alert');
+      }, 350);
+    }
+    this.tacticalHUD.pulseEnemies();
   }
 
   /**
    * Triggers brief score highlight flash when points are scored.
    */
   public pulseScore(): void {
-    if (!this.scoreElement) return;
-    this.scoreElement.classList.remove('hud-pulse-score');
-    void this.scoreElement.offsetWidth;
-    this.scoreElement.classList.add('hud-pulse-score');
-    setTimeout(() => {
-      this.scoreElement?.classList.remove('hud-pulse-score');
-    }, 350);
+    if (this.scoreElement) {
+      this.scoreElement.classList.remove('hud-pulse-score');
+      void this.scoreElement.offsetWidth;
+      this.scoreElement.classList.add('hud-pulse-score');
+      setTimeout(() => {
+        this.scoreElement?.classList.remove('hud-pulse-score');
+      }, 350);
+    }
+    this.tacticalHUD.pulseScore();
   }
 
   /**
    * Triggers red warning pulse on lives counter when player loses a life.
    */
   public pulseLives(): void {
-    if (!this.livesElement) return;
-    this.livesElement.classList.remove('hud-pulse-danger');
-    void this.livesElement.offsetWidth;
-    this.livesElement.classList.add('hud-pulse-danger');
-    setTimeout(() => {
-      this.livesElement?.classList.remove('hud-pulse-danger');
-    }, 450);
+    if (this.livesElement) {
+      this.livesElement.classList.remove('hud-pulse-danger');
+      void this.livesElement.offsetWidth;
+      this.livesElement.classList.add('hud-pulse-danger');
+      setTimeout(() => {
+        this.livesElement?.classList.remove('hud-pulse-danger');
+      }, 450);
+    }
+    this.tacticalHUD.pulseLives();
   }
 
   /**
    * Updates core gameplay statistics with caching to avoid redundant DOM writes.
+   * Simultaneously updates TacticalCommandHUD snapshot.
    */
   public update(
     remainingEnemies: number,
     lives: number,
     formattedScore: string,
-    formattedTotalScore?: string
+    formattedTotalScore?: string,
+    archetypes?: EnemyArchetypeComposition,
+    commandNodeStatus: 'SECURE' | 'LOST' = 'SECURE'
   ): void {
     if (this.cachedEnemies !== remainingEnemies) {
       this.cachedEnemies = remainingEnemies;
@@ -225,10 +348,48 @@ export class HUD {
         this.totalScoreElement.textContent = formattedTotalScore;
       }
     }
+
+    if (archetypes) {
+      this.cachedArchetypes = archetypes;
+    }
+
+    this.cachedCommandNodeStatus = commandNodeStatus;
+    this.dispatchTacticalSnapshot();
   }
 
   /**
-   * Updates status indicator badge (e.g. READY, BASE DESTROYED, TANK DESTROYED, STAGE CLEAR).
+   * Dispatches snapshot to TacticalCommandHUD.
+   */
+  private dispatchTacticalSnapshot(): void {
+    const totalEnemies = this.cachedTotalEnemies > 0
+      ? this.cachedTotalEnemies
+      : Math.max(this.cachedEnemies, 12);
+
+    const snapshot: TacticalHUDSnapshot = {
+      stageNumber: this.cachedStageNumber > 0 ? this.cachedStageNumber : 1,
+      stageName: this.cachedStageName,
+      missionTitle: this.cachedMissionTitle,
+      enemiesRemaining: Math.max(0, this.cachedEnemies),
+      totalEnemies,
+      archetypeComposition: this.cachedArchetypes,
+      lives: Math.max(0, this.cachedLives),
+      stageScore: parseInt(this.cachedScore || '0', 10),
+      formattedStageScore: this.cachedScore || '000000',
+      campaignScore: parseInt(this.cachedTotalScore || '0', 10),
+      formattedCampaignScore: this.cachedTotalScore || '000000',
+      statusText: this.cachedStatus || 'READY',
+      isDead: this.cachedStatus === 'TANK DESTROYED' || this.cachedStatus === 'BASE DESTROYED',
+      commandNodeStatus: this.cachedCommandNodeStatus,
+      activePowerups: this.cachedActivePowerups,
+      isMuted: this.isMutedState,
+      isPaused: this.isPausedState,
+    };
+
+    this.tacticalHUD.renderSnapshot(snapshot);
+  }
+
+  /**
+   * Updates status indicator badge across both compact and tactical interfaces.
    */
   public setStatus(text: string, isDead: boolean = false): void {
     if (this.cachedStatus !== text) {
@@ -243,11 +404,12 @@ export class HUD {
           this.statusElement.classList.add('hud-status-ok');
         }
       }
+      this.dispatchTacticalSnapshot();
     }
   }
 
   /**
-   * Updates debug metrics (FPS, active meshes, input source, touch dir, fire, DPR, etc.) when DEBUG is active.
+   * Updates debug metrics when DEBUG is active.
    */
   public updateDebug(stats: DebugTelemetry | number, meshCount?: number): void {
     if (!DEBUG) return;
@@ -300,9 +462,11 @@ export class HUD {
 
   /**
    * Updates active battlefield powerup indicators.
-   * Throttles DOM updates to avoid unnecessary layout work.
    */
   public updatePowerups(effects: ActivePowerupStatus[], isMobile: boolean = false): void {
+    this.cachedActivePowerups = [...effects];
+    this.dispatchTacticalSnapshot();
+
     if (!this.powerupsContainer) return;
 
     if (effects.length === 0) {
@@ -341,8 +505,36 @@ export class HUD {
       .join('');
   }
 
+  /**
+   * Sets stage topology for TacticalMinimap.
+   */
+  public setStageTopology(tiles: readonly (readonly TileType[])[] | TileType[][]): void {
+    this.tacticalHUD.setStageTopology(tiles);
+  }
+
+  /**
+   * Sets entity provider for TacticalMinimap.
+   */
+  public setMinimapEntityProvider(provider: MinimapEntityProvider): void {
+    this.tacticalHUD.setMinimapEntityProvider(provider);
+  }
+
+  /**
+   * Triggers throttled minimap update.
+   */
+  public updateMinimap(now?: number): void {
+    if (this.mode === 'TACTICAL' && this.isVisibleState && !this.isPausedState) {
+      this.tacticalHUD.updateMinimap(now);
+    }
+  }
+
+  public getTacticalHUD(): TacticalCommandHUD {
+    return this.tacticalHUD;
+  }
+
   public dispose(): void {
     window.removeEventListener('keydown', this.onKeyDownHandler);
+    this.tacticalHUD.dispose();
     // Clear references
     this.enemiesElement = null;
     this.livesElement = null;
@@ -360,6 +552,6 @@ export class HUD {
     this.debugDprEl = null;
     this.muteButton = null;
     this.muteIcon = null;
+    this.pauseButton = null;
   }
 }
-

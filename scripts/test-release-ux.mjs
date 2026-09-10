@@ -860,9 +860,9 @@ console.log('\nTest Suite 19: Phase 1-17 Full 3-Stage Campaign Progression Regre
   assert(campaign.getScore() === 4900, 'Stage 02 completed with cumulative 4900 score');
   assert(campaign.getCarriedLives() === 1, 'Stage 02 carried lives = 1');
 
-  // Stage 03 Clear: Earn 3800 points, 1 life remains (Terminal Stage)
+  // Stage 03 Clear: Earn 3800 points, 1 life remains (Terminal Stage for 3-stage run)
   campaign.prepareNextStage(1);
-  campaign.recordStageComplete(stage03, 3800, 1, { STANDARD: 5, FAST: 8, ARMOR: 7 });
+  campaign.recordStageComplete({ ...stage03, nextStageId: null }, 3800, 1, { STANDARD: 5, FAST: 8, ARMOR: 7 });
 
   assert(campaign.isCampaignComplete() === true, 'Terminal Stage 03 triggers Campaign Complete');
   const summary = campaign.getCampaignResult();

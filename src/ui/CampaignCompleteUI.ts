@@ -1,19 +1,19 @@
 import { CampaignResult } from '../game/CampaignSession';
+import { stageRegistry } from '../stages/stageRegistry';
 
 /**
  * CampaignCompleteUI manages the victory modal overlay presented upon completing
- * the final campaign stage (Stage 03).
+ * the final campaign stage.
  *
- * Displays multi-stage breakdown, cumulative campaign score, full archetype destruction totals,
+ * Dynamically displays multi-stage breakdown for any number of campaign stages,
+ * cumulative campaign score, full archetype destruction totals,
  * remaining carried lives, and the NEW CAMPAIGN action button with keyboard/touch support.
  */
 export class CampaignCompleteUI {
   private overlay: HTMLElement | null;
   private newCampaignBtn: HTMLElement | null;
+  private stagesBox: HTMLElement | null;
   private totalScoreEl: HTMLElement | null;
-  private stage1ScoreEl: HTMLElement | null;
-  private stage2ScoreEl: HTMLElement | null;
-  private stage3ScoreEl: HTMLElement | null;
   private totalEnemiesEl: HTMLElement | null;
   private standardKillsEl: HTMLElement | null;
   private fastKillsEl: HTMLElement | null;
@@ -29,10 +29,12 @@ export class CampaignCompleteUI {
 
     this.overlay = document.getElementById('campaignCompleteOverlay');
     this.newCampaignBtn = document.getElementById('newCampaignBtn');
+    this.stagesBox = (this.overlay && typeof this.overlay.querySelector === 'function')
+      ? this.overlay.querySelector('.campaign-stages-box')
+      : (typeof document !== 'undefined' && typeof document.querySelector === 'function')
+        ? document.querySelector('.campaign-stages-box')
+        : null;
     this.totalScoreEl = document.getElementById('campaignCompleteTotalScore');
-    this.stage1ScoreEl = document.getElementById('campaignStage1Score');
-    this.stage2ScoreEl = document.getElementById('campaignStage2Score');
-    this.stage3ScoreEl = document.getElementById('campaignStage3Score');
     this.totalEnemiesEl = document.getElementById('campaignTotalEnemies');
     this.standardKillsEl = document.getElementById('campaignStandardKills');
     this.fastKillsEl = document.getElementById('campaignFastKills');
@@ -67,6 +69,7 @@ export class CampaignCompleteUI {
 
   /**
    * Populates and reveals the Campaign Complete victory modal.
+   * Dynamically constructs DOM rows for all completed stages without hardcoding.
    */
   public show(result: CampaignResult): void {
     this.isVisible = true;
@@ -75,13 +78,29 @@ export class CampaignCompleteUI {
       this.totalScoreEl.textContent = result.totalScore.toString().padStart(6, '0');
     }
 
-    // Populate stage breakdown
-    const stageScores = [this.stage1ScoreEl, this.stage2ScoreEl, this.stage3ScoreEl];
-    (result.stageResults || []).forEach((stageResult, idx) => {
-      if (idx < stageScores.length && stageScores[idx]) {
-        stageScores[idx]!.textContent = stageResult.finalScore.toString().padStart(6, '0');
+    // Dynamically populate stage breakdown rows using safe DOM manipulation
+    if (this.stagesBox && Array.isArray(result.stageResults) && typeof document !== 'undefined' && typeof document.createElement === 'function') {
+      this.stagesBox.textContent = '';
+      for (const stageResult of result.stageResults) {
+        const row = document.createElement('div');
+        row.className = 'campaign-stage-row';
+
+        const nameSpan = document.createElement('span');
+        nameSpan.className = 'campaign-stage-name';
+        const stageDef = stageRegistry.getStageDefinition(stageResult.stageId);
+        const stageNumStr = stageResult.stageNumber.toString().padStart(2, '0');
+        nameSpan.textContent = stageDef ? `${stageNumStr} ${stageDef.displayName}` : `STAGE ${stageNumStr}`;
+
+        const scoreSpan = document.createElement('span');
+        scoreSpan.className = 'campaign-stage-score';
+        scoreSpan.id = `campaignStage${stageResult.stageNumber}Score`;
+        scoreSpan.textContent = stageResult.finalScore.toString().padStart(6, '0');
+
+        row.appendChild(nameSpan);
+        row.appendChild(scoreSpan);
+        this.stagesBox.appendChild(row);
       }
-    });
+    }
 
     if (this.totalEnemiesEl) {
       this.totalEnemiesEl.textContent = (result.totalEnemiesDestroyed ?? 0).toString();
@@ -127,10 +146,8 @@ export class CampaignCompleteUI {
     window.removeEventListener('keydown', this.keyHandler);
     this.overlay = null;
     this.newCampaignBtn = null;
+    this.stagesBox = null;
     this.totalScoreEl = null;
-    this.stage1ScoreEl = null;
-    this.stage2ScoreEl = null;
-    this.stage3ScoreEl = null;
     this.totalEnemiesEl = null;
     this.standardKillsEl = null;
     this.fastKillsEl = null;

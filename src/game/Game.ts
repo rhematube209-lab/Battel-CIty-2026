@@ -43,13 +43,28 @@ import { FeedbackSystem } from '../systems/FeedbackSystem';
  * to guarantee the entire 26x26 arena, spawns, and base remain completely visible
  * with zero edge cropping.
  */
-export function calculateCameraFraming(aspectRatio: number): {
+export function calculateCameraFraming(aspectRatio: number, isTacticalViewport: boolean = false): {
   height: number;
   distanceOffsetZ: number;
   fov: number;
 } {
+  if (isTacticalViewport) {
+    // Phase 23 Visual Refinement: Tightened desktop tactical framing fills 88–94% of battlefield height
+    // while keeping all 4 boundaries, Command Node, and spawns fully visible.
+    // Fixed pitch angle identical to CAMERA_CONFIG (ratio = 34.6 / 12.975 = 2.6667 = 32 / 12)
+    const tacticalHeight = 34.6;
+    const tacticalDistanceOffsetZ = -12.975;
+    const minAspect = 1.15;
+    const scale = aspectRatio < minAspect ? minAspect / aspectRatio : 1.0;
+    return {
+      height: tacticalHeight * scale,
+      distanceOffsetZ: tacticalDistanceOffsetZ * scale,
+      fov: CAMERA_CONFIG.FOV,
+    };
+  }
+
   const baseAspect = 16 / 9; // ~1.777
-  const scale = aspectRatio < baseAspect ? Math.min(1.35, Math.max(1.0, baseAspect / aspectRatio)) : 1.0;
+  const scale = aspectRatio < baseAspect ? Math.min(1.55, Math.max(1.0, baseAspect / aspectRatio)) : 1.0;
   return {
     height: CAMERA_CONFIG.HEIGHT * scale,
     distanceOffsetZ: CAMERA_CONFIG.DISTANCE_OFFSET_Z * scale,
@@ -132,13 +147,17 @@ export class Game {
 
     this.initCamera();
     this.initArena();
+    this.arena.applyPresentation(stageDef.presentation, this.userPreferences.isReducedMotion());
     this.initTileMap(stageDef);
     this.audioSystem = new AudioSystem();
     this.audioSystem.stopAllLoops();
     this.feedbackSystem = new FeedbackSystem();
     this.feedbackSystem.setReducedMotion(this.userPreferences.isReducedMotion());
     this.userPreferences.addListener(() => {
-      this.feedbackSystem.setReducedMotion(this.userPreferences.isReducedMotion());
+      const rm = this.userPreferences.isReducedMotion();
+      this.feedbackSystem.setReducedMotion(rm);
+      const curStage = this.stageManager.getCurrentStage();
+      this.arena.applyPresentation(curStage.presentation, rm);
     });
 
     this.initGameplay(stageDef);
@@ -158,13 +177,7 @@ export class Game {
 
     // Responsive window resize & orientation handler
     this.resizeHandler = () => {
-      this.qualityProfile = detectQualityProfile();
-      const currentDpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
-      this.engine.setHardwareScalingLevel(1.0 / Math.min(currentDpr, this.qualityProfile.maxDpr));
-      this.engine.resize();
-
-      const aspect = this.canvas.clientWidth / Math.max(1, this.canvas.clientHeight);
-      this.updateCameraForAspect(aspect);
+      this.syncLayoutAndCamera();
     };
     window.addEventListener('resize', this.resizeHandler);
 
@@ -235,12 +248,61 @@ export class Game {
    * Updates camera distance and elevation based on current aspect ratio.
    * Centralized camera framing function for responsive layouts.
    */
-  public updateCameraForAspect(aspectRatio: number): void {
-    const framing = calculateCameraFraming(aspectRatio);
+  public updateCameraForAspect(aspectRatio: number, isTacticalViewport: boolean = false): void {
+    const framing = calculateCameraFraming(aspectRatio, isTacticalViewport);
     this.baseCameraPosition.set(0, framing.height, framing.distanceOffsetZ);
     this.camera.position.copyFrom(this.baseCameraPosition);
     this.camera.setTarget(new Vector3(0, CAMERA_CONFIG.TARGET_Y, 0));
     this.camera.fov = framing.fov;
+  }
+
+  /**
+   * Synchronizes UI layout mode, Babylon engine viewport, and tactical camera framing.
+   * Follows Phase 23 7-step pipeline:
+   * 1. Resolve COMPACT / TACTICAL
+   * 2. Apply sidebar / compact DOM layout
+   * 3. engine.resize()
+   * 4. Obtain ACTUAL canvas/battlefield dimensions
+   * 5. Calculate camera framing from ACTUAL canvas aspect
+   * 6. Update baseCameraPosition
+   * 7. Preserve fixed tactical camera orientation/target
+   */
+  public syncLayoutAndCamera(): void {
+    this.qualityProfile = detectQualityProfile();
+    this.hud?.syncResponsiveMode(this.qualityProfile.isMobile);
+    const currentDpr = typeof window !== 'undefined' ? (window.devicePixelRatio || 1) : 1;
+    this.engine.setHardwareScalingLevel(1.0 / Math.min(currentDpr, this.qualityProfile.maxDpr));
+    this.engine.resize();
+
+    // Sourced directly from actual battlefield viewport / canvas dimensions
+    const battlefieldShell = document.getElementById('battlefieldShell');
+    const width = battlefieldShell?.clientWidth ?? this.canvas.clientWidth;
+    const height = battlefieldShell?.clientHeight ?? this.canvas.clientHeight;
+    const actualAspect = width > 0 && height > 0 ? width / height : 16 / 9;
+
+    const isTactical = !this.qualityProfile.isMobile && (typeof window !== 'undefined' ? window.innerWidth >= 1100 : false);
+    this.updateCameraForAspect(actualAspect, isTactical);
+  }
+
+  /**
+   * Computes authoritative 6-digit zero-padded campaign total score.
+   * If current stage is uncommitted: completed score + current stage score.
+   * If current stage is committed (e.g. STAGE_COMPLETE or CAMPAIGN_COMPLETE): completed score.
+   * Strictly prevents double-counting.
+   */
+  public getAuthoritativeDisplayTotal(): string {
+    const currentStageId = this.stageManager ? this.stageManager.getCurrentStage()?.id : null;
+    const isAlreadyRecorded = currentStageId
+      ? this.campaignSession.getCompletedStages().some((s) => s.stageId === currentStageId)
+      : false;
+    const isCommitted =
+      this.gameState === GameState.STAGE_COMPLETE ||
+      this.gameState === GameState.CAMPAIGN_COMPLETE ||
+      isAlreadyRecorded;
+    const total = isCommitted
+      ? this.campaignSession.getCompletedScore()
+      : this.campaignSession.getDisplayTotal(this.scoreSystem ? this.scoreSystem.getScore() : 0);
+    return total.toString().padStart(6, '0');
   }
 
   /**
@@ -262,7 +324,7 @@ export class Game {
    * Initializes the logical TileMap and renders maze elements from the active StageDefinition.
    */
   private initTileMap(stageDef: StageDefinition): void {
-    this.tileMap = new TileMap(this.scene, stageDef.level);
+    this.tileMap = new TileMap(this.scene, stageDef.level, stageDef.presentation);
   }
 
   /**
@@ -316,9 +378,14 @@ export class Game {
     this.enemyManager.setOnEnemyDestroyed((tank, destroyed, remaining) => {
       const scoreGain = tank.getScoreValue();
       this.scoreSystem.addScore(scoreGain);
-      const currentStageScore = this.scoreSystem.getScore();
-      const totalScoreStr = this.campaignSession.getDisplayTotal(currentStageScore).toString().padStart(6, '0');
-      this.hud.update(remaining, this.playerLives, this.scoreSystem.getFormattedScore(), totalScoreStr);
+      const totalScoreStr = this.getAuthoritativeDisplayTotal();
+      this.hud.update(
+        remaining,
+        this.playerLives,
+        this.scoreSystem.getFormattedScore(),
+        totalScoreStr,
+        this.enemyManager.getArchetypeComposition()
+      );
       this.audioSystem.playExplosion(false);
       this.feedbackSystem.triggerShake(0.06, 0.22);
       this.feedbackSystem.triggerScorePop(`+${scoreGain}`);
@@ -525,11 +592,11 @@ export class Game {
 
     // Record into CampaignSession (strictly idempotent)
     this.campaignSession.recordStageResult(stageResult, !hasNextStage);
+    this.gameState = hasNextStage ? GameState.STAGE_COMPLETE : GameState.CAMPAIGN_COMPLETE;
 
-    const totalFormatted = this.campaignSession.getCompletedScore().toString().padStart(6, '0');
+    const totalFormatted = this.getAuthoritativeDisplayTotal();
 
     if (hasNextStage) {
-      this.gameState = GameState.STAGE_COMPLETE;
       this.audioSystem.playStageClear();
 
       if (this.stageCompleteUI) {
@@ -572,6 +639,10 @@ export class Game {
    */
   public handleBaseHit(): void {
     this.audioSystem.playBaseDestroyed();
+    const stageDef = this.stageManager.getCurrentStage();
+    if (stageDef.presentation?.stageAudioProfile === 'NEXUS') {
+      this.audioSystem.playNexusRelayDestruction();
+    }
     this.feedbackSystem.triggerShake(0.12, 0.35);
     this.triggerGameOver(GameOverReason.BASE_DESTROYED);
   }
@@ -594,13 +665,13 @@ export class Game {
     this.feedbackSystem.triggerDamagePulse();
     this.hud.pulseLives();
 
-    const currentStageScore = this.scoreSystem.getScore();
-    const totalScoreStr = this.campaignSession.getDisplayTotal(currentStageScore).toString().padStart(6, '0');
+    const totalScoreStr = this.getAuthoritativeDisplayTotal();
     this.hud.update(
       this.enemyManager.getRemainingCount(),
       this.playerLives,
       this.scoreSystem.getFormattedScore(),
-      totalScoreStr
+      totalScoreStr,
+      this.enemyManager.getArchetypeComposition()
     );
 
     if (this.playerLives <= 0) {
@@ -656,9 +727,10 @@ export class Game {
 
     this.gameState = GameState.PLAYING;
     this.mobileControls.setVisible(true);
+    this.syncLayoutAndCamera();
 
     this.hud.setStageNumber(stageDef.stageNumber);
-    const totalFormatted = this.campaignSession.getCompletedScore().toString().padStart(6, '0');
+    const totalFormatted = this.getAuthoritativeDisplayTotal();
     this.hud.update(
       this.enemyManager.getRemainingCount(),
       this.playerLives,
@@ -671,6 +743,9 @@ export class Game {
       stageDef.displayName,
       stageDef.missionTitle
     );
+    if (stageDef.presentation?.stageAudioProfile === 'NEXUS') {
+      this.audioSystem.playStage04Intro();
+    }
   }
 
   /**
@@ -678,9 +753,19 @@ export class Game {
    */
   public loadCurrentStageWorld(): void {
     const stageDef = this.stageManager.getCurrentStage();
-    this.tileMap.loadLevel(stageDef.level);
+    this.arena.applyPresentation(stageDef.presentation, this.userPreferences.isReducedMotion());
+    this.tileMap.loadLevel(stageDef.level, stageDef.presentation);
     this.collisionSystem.setTileMap(this.tileMap);
     this.projectileSystem.setTileMap(this.tileMap);
+    if (this.hud) {
+      this.hud.setStageTopology(stageDef.level.tiles);
+      this.hud.setStageMetadata(
+        stageDef.stageNumber,
+        stageDef.displayName,
+        stageDef.missionTitle,
+        stageDef.enemySequence.length
+      );
+    }
   }
 
   /**
@@ -734,14 +819,17 @@ export class Game {
     }
 
     this.gameState = GameState.PLAYING;
+    this.syncLayoutAndCamera();
 
     this.hud.setStageNumber(nextStage.stageNumber);
-    const totalFormatted = this.campaignSession.getCompletedScore().toString().padStart(6, '0');
+    const totalFormatted = this.getAuthoritativeDisplayTotal();
     this.hud.update(
       this.enemyManager.getRemainingCount(),
       this.playerLives,
       this.scoreSystem.getFormattedScore(),
-      totalFormatted
+      totalFormatted,
+      this.enemyManager.getArchetypeComposition(),
+      'SECURE'
     );
     this.hud.setStatus('READY', false);
     this.feedbackSystem.showStageBanner(
@@ -749,6 +837,93 @@ export class Game {
       nextStage.displayName,
       nextStage.missionTitle
     );
+    if (nextStage.presentation?.stageAudioProfile === 'NEXUS') {
+      this.audioSystem.playStage04Intro();
+    }
+  }
+
+  /**
+   * Starts a specified stage directly with given lives (DEV utility).
+   * Rebuilds stage visual & logical world, reconfigures enemy & powerup systems,
+   * resets player tank to spawn, hides title and modals, and transitions to PLAYING.
+   * Leaves CampaignSession intact so pre-seeded completed stages remain authoritative.
+   */
+  public startStageDirectly(stageId: string, lives: number = 3): void {
+    const stageDef = this.stageManager.load(stageId);
+
+    this.audioSystem.stopAllLoops();
+    this.inputSystem.reset();
+    this.projectileSystem.reset();
+    this.scoreSystem.reset();
+    this.powerupSystem.reset();
+    this.powerupSystem.setMilestones(stageDef.powerupMilestones);
+    this.wasPlayerSliding = false;
+    this.wasPlayerOnConveyor = false;
+
+    // Rebuild stage visual and logical world
+    this.loadCurrentStageWorld();
+    this.tileMap.resetDestruction();
+
+    // Reconfigure EnemyManager with reused pool
+    this.enemyManager.configureStage(stageDef);
+
+    // Reset player tank to stage spawn
+    const playerSpawn = this.tileMap.getPlayerSpawn();
+    if (playerSpawn) {
+      this.playerTank.resetToSpawn(playerSpawn, Direction.NORTH);
+    }
+    this.playerTank.setAegisShieldActive(false);
+
+    this.playerLives = lives;
+    this.isPlayerRespawning = false;
+    this.playerRespawnTimer = 0;
+
+    if (this.titleScreenUI) {
+      this.titleScreenUI.hide();
+    }
+    if (this.pauseMenuUI) {
+      this.pauseMenuUI.hide();
+    }
+    if (this.settingsUI) {
+      this.settingsUI.hide();
+    }
+    if (this.controlsUI) {
+      this.controlsUI.hide();
+    }
+    if (this.campaignCompleteUI) {
+      this.campaignCompleteUI.hide();
+    }
+    if (this.stageCompleteUI) {
+      this.stageCompleteUI.hide();
+    }
+    if (this.gameOverUI) {
+      this.gameOverUI.hide();
+    }
+
+    this.gameState = GameState.PLAYING;
+    this.hud.setVisible(true);
+    this.mobileControls.setVisible(true);
+    this.syncLayoutAndCamera();
+
+    this.hud.setStageNumber(stageDef.stageNumber);
+    const totalFormatted = this.getAuthoritativeDisplayTotal();
+    this.hud.update(
+      this.enemyManager.getRemainingCount(),
+      this.playerLives,
+      this.scoreSystem.getFormattedScore(),
+      totalFormatted,
+      this.enemyManager.getArchetypeComposition(),
+      'SECURE'
+    );
+    this.hud.setStatus('READY', true);
+    this.feedbackSystem.showStageBanner(
+      stageDef.stageNumber,
+      stageDef.displayName,
+      stageDef.missionTitle
+    );
+    if (stageDef.presentation?.stageAudioProfile === 'NEXUS') {
+      this.audioSystem.playStage04Intro();
+    }
   }
 
   /**
@@ -756,13 +931,35 @@ export class Game {
    */
   private initUI(stageDef: StageDefinition): void {
     this.hud = new HUD();
-    this.hud.setStageNumber(stageDef.stageNumber);
-    const initialTotal = this.campaignSession.getCompletedScore().toString().padStart(6, '0');
+    this.hud.setReducedMotion(this.userPreferences.isReducedMotion());
+    this.hud.syncResponsiveMode(this.qualityProfile.isMobile);
+    this.hud.setStageTopology(stageDef.level.tiles);
+    this.hud.setMinimapEntityProvider({
+      getPlayerPosition: () => (this.playerTank && !this.playerTank.isDestroyed() ? this.playerTank.getPosition() : null),
+      getEnemyPositions: () => this.enemyManager ? this.enemyManager.getActiveEnemies().map((e) => e.getPosition()) : [],
+      isBaseDestroyed: () => {
+        try {
+          return this.tileMap.getBase().isDestroyed();
+        } catch {
+          return false;
+        }
+      },
+    });
+    this.hud.setStageMetadata(
+      stageDef.stageNumber,
+      stageDef.displayName,
+      stageDef.missionTitle,
+      stageDef.enemySequence.length
+    );
+    this.syncLayoutAndCamera();
+    const initialTotal = this.getAuthoritativeDisplayTotal();
     this.hud.update(
       this.enemyManager.getRemainingCount(),
       this.playerLives,
       this.scoreSystem.getFormattedScore(),
-      initialTotal
+      initialTotal,
+      this.enemyManager.getArchetypeComposition(),
+      'SECURE'
     );
     this.hud.setStatus('READY', true);
 
@@ -852,6 +1049,7 @@ export class Game {
     this.mobileControls.clearAllPointers();
     this.mobileControls.setVisible(false);
     this.hud.setStatus('PAUSED', false);
+    this.hud.setPaused(true);
     this.pauseMenuUI.show();
   }
 
@@ -860,6 +1058,7 @@ export class Game {
    */
   public resumeGame(): void {
     if (this.gameState !== GameState.PAUSED) return;
+    this.hud.setPaused(false);
     this.pauseMenuUI.hide();
     this.inputSystem.clearInput();
     this.mobileControls.clearAllPointers();
@@ -877,6 +1076,7 @@ export class Game {
     this.mobileControls.clearAllPointers();
     this.mobileControls.setVisible(false);
     this.hud.setVisible(false);
+    this.syncLayoutAndCamera();
 
     if (this.pauseMenuUI) this.pauseMenuUI.hide();
     if (this.settingsUI) this.settingsUI.hide();
@@ -910,6 +1110,9 @@ export class Game {
     this.playerTank.setAegisShieldActive(false);
 
     this.gameState = GameState.MAIN_MENU;
+    if (typeof document !== 'undefined') {
+      document.getElementById('devStageBadge')?.remove();
+    }
     this.titleScreenUI.show();
   }
 
@@ -1030,17 +1233,24 @@ export class Game {
       this.gameOverUI.hide();
     }
 
+    if (typeof document !== 'undefined') {
+      document.getElementById('devStageBadge')?.remove();
+    }
+
     this.gameState = GameState.PLAYING;
     this.hud.setVisible(true);
     this.mobileControls.setVisible(true);
+    this.syncLayoutAndCamera();
 
     this.hud.setStageNumber(stageDef.stageNumber);
-    const totalFormatted = this.campaignSession.getCompletedScore().toString().padStart(6, '0');
+    const totalFormatted = this.getAuthoritativeDisplayTotal();
     this.hud.update(
       this.enemyManager.getRemainingCount(),
       this.playerLives,
       this.scoreSystem.getFormattedScore(),
-      totalFormatted
+      totalFormatted,
+      this.enemyManager.getArchetypeComposition(),
+      'SECURE'
     );
     this.hud.setStatus('READY', true);
     this.feedbackSystem.showStageBanner(
@@ -1061,10 +1271,13 @@ export class Game {
         // Update camera shake decay
         this.feedbackSystem.update(dt, this.camera, this.baseCameraPosition);
 
+        const reducedMotion = this.userPreferences.isReducedMotion();
+        this.arena.update(dt, reducedMotion);
+
         // Base explosion & spark VFX update
         const base = this.tileMap.getBase();
         if (base) {
-          base.update(dt);
+          base.update(dt, reducedMotion);
         }
 
         // Handle player life respawn countdown and safety check
@@ -1143,9 +1356,10 @@ export class Game {
       } else if (this.gameState === GameState.GAME_OVER || this.gameState === GameState.STAGE_COMPLETE) {
         // In GAME_OVER or STAGE_COMPLETE, freeze movement but allow destruction VFX to finish
         this.camera.position.copyFrom(this.baseCameraPosition);
+        const reducedMotion = this.userPreferences.isReducedMotion();
         const base = this.tileMap.getBase();
         if (base) {
-          base.update(dt);
+          base.update(dt, reducedMotion);
         }
         this.powerupSystem.update(dt, this.playerTank, this.enemyManager);
         this.playerTank.update(dt, undefined, false);
@@ -1153,6 +1367,10 @@ export class Game {
         // In PAUSED or MAIN_MENU: STRICTLY ZERO SIMULATION DELTA
         // Zero delta to playerTank, enemyManager, projectileSystem, powerupSystem, base
         this.camera.position.copyFrom(this.baseCameraPosition);
+      }
+
+      if (this.gameState === GameState.PLAYING) {
+        this.hud.updateMinimap();
       }
 
       this.scene.render();

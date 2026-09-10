@@ -2,6 +2,7 @@ import { StageDefinition, validateStageDefinition } from './StageDefinition';
 import { STAGE_01_DEFINITION } from './stage01';
 import { STAGE_02_DEFINITION } from './stage02';
 import { STAGE_03_DEFINITION } from './stage03';
+import { STAGE_04_DEFINITION } from './stage04';
 
 /**
  * In-memory registry of all available StageDefinitions.
@@ -15,6 +16,7 @@ export class StageRegistry {
     this.registerStage(STAGE_01_DEFINITION);
     this.registerStage(STAGE_02_DEFINITION);
     this.registerStage(STAGE_03_DEFINITION);
+    this.registerStage(STAGE_04_DEFINITION);
     this.validateLinks();
   }
 
@@ -90,6 +92,7 @@ export class StageRegistry {
     this.registerStage(STAGE_01_DEFINITION);
     this.registerStage(STAGE_02_DEFINITION);
     this.registerStage(STAGE_03_DEFINITION);
+    this.registerStage(STAGE_04_DEFINITION);
     this.validateLinks();
   }
 }
@@ -100,4 +103,5 @@ export const STAGES: Record<string, StageDefinition> = {
   stage01: STAGE_01_DEFINITION,
   stage02: STAGE_02_DEFINITION,
   stage03: STAGE_03_DEFINITION,
+  stage04: STAGE_04_DEFINITION,
 };

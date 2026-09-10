@@ -2,6 +2,7 @@ import { Game } from './game/Game';
 import { runGridConversionTests } from './world/testGrid';
 import { BUILD_INFO, getBuildDiagnosticString } from './config/buildInfo';
 import { FatalErrorUI } from './ui/FatalErrorUI';
+import { applyDevStageBootstrap } from './dev/DevStageBootstrap';
 
 // Track handled error occurrences to prevent duplicate console spam
 const loggedErrors = new WeakSet<object>();
@@ -102,19 +103,23 @@ window.addEventListener('DOMContentLoaded', () => {
 
     // 5. Initialize Core Game within strict exception containment boundary (Requirement 3)
     const urlParams = new URLSearchParams(window.location.search);
-    const stageParam = urlParams.get('stage');
     const benchmarkParam = urlParams.get('benchmark');
-    const initialStageId = (stageParam === 'stage02' || stageParam === 'stage03') ? stageParam : 'stage01';
 
-    const game = new Game(canvas, initialStageId);
+    const game = new Game(canvas, 'stage01');
 
     if (benchmarkParam === 'worstcase') {
       game.setupWorstCaseBenchmark();
     }
 
-    // Preferred Dev-Hook Policy: window.__GAME_INSTANCE__ only in DEV; undefined in production
+    // Preferred Dev-Hook Policy: window.__GAME_INSTANCE__ and devStage bootstrap only in DEV; inert in production
     if (import.meta.env.DEV) {
       (window as unknown as { __GAME_INSTANCE__?: Game }).__GAME_INSTANCE__ = game;
+
+      const devStage = urlParams.get('devStage');
+      if (devStage) {
+        const devLives = urlParams.get('devLives');
+        applyDevStageBootstrap(game, devStage, devLives);
+      }
     }
 
     // Production-safe read-only diagnostics alternative (Phase 19 Hardening)

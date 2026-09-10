@@ -8,6 +8,7 @@ import {
   TransformNode
 } from '@babylonjs/core';
 import { TILE_SIZE, VISUAL_HEIGHTS } from '../game/constants';
+import { StagePresentationConfig } from '../stages/StageDefinition';
 
 export enum BaseState {
   ACTIVE = 0,
@@ -30,6 +31,10 @@ export class Base {
   private rootNode: TransformNode;
   private state: BaseState = BaseState.ACTIVE;
   private worldPosition: Vector3;
+
+  // Presentation metadata & ambient pulse
+  private currentPresentation?: StagePresentationConfig;
+  private pulseTimer: number = 0;
 
   // Visual meshes
   private pedestalMesh: Mesh;
@@ -208,14 +213,37 @@ export class Base {
   }
 
   /**
+   * Applies data-driven stage presentation styling to the command base core.
+   */
+  public setPresentation(presentation?: StagePresentationConfig): void {
+    this.currentPresentation = presentation;
+    this.pulseTimer = 0;
+
+    if (this.state === BaseState.ACTIVE) {
+      if (presentation?.floorTheme === 'NEXUS') {
+        this.coreMat.diffuseColor.set(0.0, 0.85, 1.0);
+        this.coreMat.emissiveColor.set(0.10, 0.40, 0.75);
+      } else {
+        this.coreMat.diffuseColor.set(0.0, 0.82, 1.0);
+        this.coreMat.emissiveColor.set(0.0, 0.45, 0.7);
+      }
+    }
+  }
+
+  /**
    * Restores the base to its pristine active state with glowing cyan core.
    */
   public reset(): void {
     this.state = BaseState.ACTIVE;
 
-    // Restore active cyan reactor core glow
-    this.coreMat.diffuseColor = new Color3(0.0, 0.82, 1.0);
-    this.coreMat.emissiveColor = new Color3(0.0, 0.45, 0.7);
+    // Restore active reactor core glow based on presentation
+    if (this.currentPresentation?.floorTheme === 'NEXUS') {
+      this.coreMat.diffuseColor.set(0.0, 0.85, 1.0);
+      this.coreMat.emissiveColor.set(0.10, 0.40, 0.75);
+    } else {
+      this.coreMat.diffuseColor.set(0.0, 0.82, 1.0);
+      this.coreMat.emissiveColor.set(0.0, 0.45, 0.7);
+    }
 
     // Hide breach wreckage
     for (let i = 0; i < this.breachMeshes.length; i++) {
@@ -255,9 +283,27 @@ export class Base {
   }
 
   /**
-   * Updates explosion VFX animation.
+   * Updates explosion VFX animation and ambient presentation core pulse.
    */
-  public update(deltaTime: number): void {
+  public update(deltaTime: number, reducedMotion: boolean = false): void {
+    // 1. Ambient cyan/violet energy core pulse when active
+    if (this.state === BaseState.ACTIVE && this.currentPresentation?.pulseEnabled) {
+      if (reducedMotion) {
+        this.coreMat.emissiveColor.set(0.10, 0.40, 0.75);
+      } else {
+        this.pulseTimer += deltaTime;
+        const rate = this.currentPresentation.pulseRate ?? 2.2;
+        const pulse = 0.5 + 0.5 * Math.sin((this.pulseTimer * 2 * Math.PI) / rate);
+        // Sinusoidal cyan <-> violet modulation (zero allocations)
+        this.coreMat.emissiveColor.set(
+          0.05 + 0.18 * pulse,
+          0.32 + 0.18 * (1 - pulse),
+          0.65 + 0.22 * pulse
+        );
+      }
+    }
+
+    // 2. Destruction explosion VFX animation
     if (!this.explosionActive) return;
 
     this.explosionTimer += deltaTime;

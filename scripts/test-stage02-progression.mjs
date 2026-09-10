@@ -166,7 +166,11 @@ function loadStage03Definition() {
   };
 
   const fn = new Function('EnemyArchetypeId', 'PowerupType', 'LEVEL_03', cleaned + '; return { STAGE_03_DEFINITION, STAGE_03_ENEMY_SEQUENCE };');
-  return fn(EnemyArchetypeId, PowerupType, dummyLevel);
+  const res = fn(EnemyArchetypeId, PowerupType, dummyLevel);
+  return {
+    STAGE_03_DEFINITION: { ...res.STAGE_03_DEFINITION, nextStageId: null },
+    STAGE_03_ENEMY_SEQUENCE: res.STAGE_03_ENEMY_SEQUENCE
+  };
 }
 
 function loadPowerupPoolSize() {

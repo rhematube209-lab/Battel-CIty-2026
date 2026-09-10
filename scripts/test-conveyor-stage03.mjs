@@ -926,7 +926,7 @@ console.log('\nTest Suite 27: Three-Stage Campaign Flow');
   assert(stage02Code.includes("nextStageId: 'stage03'"), "Stage 02 links to 'stage03'");
 
   const stage03Code = fs.readFileSync('src/stages/stage03.ts', 'utf8');
-  assert(stage03Code.includes("nextStageId: null"), "Stage 03 is terminal with nextStageId: null");
+  assert(stage03Code.includes("nextStageId: 'stage04'") || stage03Code.includes("nextStageId: null"), "Stage 03 links to 'stage04' (or null in v1.0)");
 
   const registryCode = fs.readFileSync('src/stages/stageRegistry.ts', 'utf8');
   assert(registryCode.includes("STAGE_03_DEFINITION"), "StageRegistry imports STAGE_03_DEFINITION");

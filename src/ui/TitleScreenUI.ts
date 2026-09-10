@@ -1,4 +1,5 @@
 import { BUILD_INFO } from '../config/buildInfo';
+import { stageRegistry } from '../stages/stageRegistry';
 
 /**
  * TitleScreenUI manages the launch screen overlay:
@@ -34,6 +35,12 @@ export class TitleScreenUI {
     this.startBtn = document.getElementById('startCampaignBtn') as HTMLButtonElement | null;
     this.settingsBtn = document.getElementById('titleSettingsBtn') as HTMLButtonElement | null;
     this.controlsBtn = document.getElementById('titleControlsBtn') as HTMLButtonElement | null;
+
+    // Dynamically populate campaign length tag from stageRegistry
+    const stageCountTag = document.getElementById('titleCampaignTag') || this.overlay?.querySelector('.footer-tag');
+    if (stageCountTag) {
+      stageCountTag.textContent = `${stageRegistry.getAllStages().length} STAGE CAMPAIGN`;
+    }
 
     // Authoritatively populate footer version from BUILD_INFO (Single Source of Truth)
     const versionEl = this.overlay?.querySelector('.footer-version');

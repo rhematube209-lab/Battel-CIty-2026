@@ -92,8 +92,79 @@
         </div>
       </header>
 
-      <!-- 3D Babylon Viewport Canvas -->
-      <canvas id="renderCanvas" touch-action="none"></canvas>
+      <!-- Main Game Shell / Layout Container (Phase 23) -->
+      <div id="gameShell" class="game-shell">
+        <div id="battlefieldShell" class="battlefield-shell">
+          <div id="battlefieldFrame" class="battlefield-frame" aria-hidden="true">
+            <!-- Corner Mechanical Housings -->
+            <div class="bf-corner bf-corner-tl">
+              <span class="bf-corner-screw"></span>
+              <span class="bf-status-led led-cyan"></span>
+            </div>
+            <div class="bf-corner bf-corner-tr">
+              <span class="bf-status-led led-amber"></span>
+              <span class="bf-corner-screw"></span>
+            </div>
+            <div class="bf-corner bf-corner-bl">
+              <span class="bf-status-led led-amber"></span>
+              <span class="bf-corner-screw"></span>
+            </div>
+            <div class="bf-corner bf-corner-br">
+              <span class="bf-corner-screw"></span>
+              <span class="bf-status-led led-cyan"></span>
+            </div>
+
+            <!-- Armored Side Flanges (Outer armored side rails) -->
+            <div class="bf-side-rail bf-side-left">
+              <div class="bf-plate bf-plate-top"></div>
+              <div class="bf-vent-grid"><span></span><span></span><span></span></div>
+              <div class="bf-plate bf-plate-mid">
+                <span class="bf-stencil-tag">ARMOR SEC-L</span>
+              </div>
+              <div class="bf-vent-grid"><span></span><span></span><span></span></div>
+              <div class="bf-plate bf-plate-bottom"></div>
+            </div>
+            <div class="bf-side-rail bf-side-right">
+              <div class="bf-plate bf-plate-top"></div>
+              <div class="bf-vent-grid"><span></span><span></span><span></span></div>
+              <div class="bf-plate bf-plate-mid">
+                <span class="bf-stencil-tag">ARMOR SEC-R</span>
+              </div>
+              <div class="bf-vent-grid"><span></span><span></span><span></span></div>
+              <div class="bf-plate bf-plate-bottom"></div>
+            </div>
+
+            <!-- Machined Top and Bottom Rails -->
+            <div class="bf-rail bf-rail-top">
+              <div class="bf-rail-flank">
+                <span class="bf-status-led led-cyan"></span>
+                <span class="bf-hazard-bars"></span>
+              </div>
+              <span class="bf-rail-label">TACTICAL DEFENSE PERIMETER // CHASSIS MK-IV</span>
+              <div class="bf-rail-flank">
+                <span class="bf-hazard-bars"></span>
+                <span class="bf-status-led led-amber"></span>
+              </div>
+            </div>
+            <div class="bf-rail bf-rail-bottom">
+              <div class="bf-rail-flank">
+                <span class="bf-status-led led-amber"></span>
+                <span class="bf-hazard-bars"></span>
+              </div>
+              <span class="bf-rail-label">CYBERNETIC ARMORED GRID // SECTOR DEFENSE ARRAY</span>
+              <div class="bf-rail-flank">
+                <span class="bf-hazard-bars"></span>
+                <span class="bf-status-led led-cyan"></span>
+              </div>
+            </div>
+          </div>
+          <!-- 3D Babylon Viewport Canvas -->
+          <canvas id="renderCanvas" touch-action="none"></canvas>
+        </div>
+
+        <!-- Tactical Command Sidebar (Desktop Wide >= 1100px) -->
+        <aside id="tacticalCommandHud" class="tactical-command-hud" style="display: none;"></aside>
+      </div>
 
       <!-- Mobile Touch Controls Layer (Phase 9) -->
       <div id="mobileControls" class="mobile-controls">
@@ -171,20 +242,7 @@
           <h1 class="campaign-complete-title">MISSION NETWORK SECURED</h1>
           <p class="campaign-complete-subtitle">ALL SECTORS LIBERATED</p>
 
-          <div class="campaign-stages-box">
-            <div class="campaign-stage-row">
-              <span class="campaign-stage-name">01 CYBER OUTPOST</span>
-              <span id="campaignStage1Score" class="campaign-stage-score">000000</span>
-            </div>
-            <div class="campaign-stage-row">
-              <span class="campaign-stage-name">02 IRON DELTA</span>
-              <span id="campaignStage2Score" class="campaign-stage-score">000000</span>
-            </div>
-            <div class="campaign-stage-row">
-              <span class="campaign-stage-name">03 FORGE LINE</span>
-              <span id="campaignStage3Score" class="campaign-stage-score">000000</span>
-            </div>
-          </div>
+          <div class="campaign-stages-box" id="campaignStagesBox"></div>
 
           <div class="campaign-complete-score-box">
             <span class="campaign-complete-score-label">TOTAL CAMPAIGN SCORE</span>
@@ -242,7 +300,7 @@
           </div>
 
           <div class="title-screen-footer">
-            <span class="footer-tag">3 STAGE CAMPAIGN</span>
+            <span id="titleCampaignTag" class="footer-tag">CAMPAIGN PROTOCOL</span>
             <span class="footer-tag">HIGH INTENSITY TACTICAL ARCADE</span>
             <span class="footer-tag footer-version"></span>
           </div>
