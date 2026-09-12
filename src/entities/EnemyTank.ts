@@ -5,17 +5,19 @@ import {
   MeshBuilder,
   StandardMaterial,
   Color3,
-  Mesh
+  Mesh,
+  InstancedMesh
 } from '@babylonjs/core';
 import { Tank } from './Tank';
 import { Direction } from '../game/Direction';
-import { ENEMY_CONFIG, COLORS } from '../game/constants';
+import { ENEMY_CONFIG } from '../game/constants';
 import { BoxBounds } from '../systems/CollisionSystem';
 import {
   EnemyArchetypeConfig,
   EnemyArchetypeId,
   ENEMY_ARCHETYPES
 } from '../config/enemyArchetypes';
+import { TankAssetLibrary } from '../visual/TankAssetLibrary';
 
 export interface EnemyDamageResult {
   damaged: boolean;
@@ -29,6 +31,7 @@ export interface EnemyDamageResult {
  * Data-driven: dynamically configurable across STANDARD, FAST, and ARMOR archetypes.
  * Features distinct silhouettes, pre-allocated reinforced armor plates,
  * multi-hit health modeling, and reversible visual damage states (zero mesh rebuilds).
+ * Powered by hardware instancing from TankAssetLibrary.
  */
 export class EnemyTank extends Tank {
   // Current Archetype Configuration
@@ -41,37 +44,42 @@ export class EnemyTank extends Tank {
   private muzzlePoint: TransformNode;
 
   // Visual meshes and materials
-  private meshes: Mesh[] = [];
+  private meshes: (Mesh | InstancedMesh)[] = [];
   private materials: StandardMaterial[] = [];
-  private chassisMesh?: Mesh;
-  private topPlateMesh?: Mesh;
-  private turretMesh?: Mesh;
-  private cannonMesh?: Mesh;
-  private visorMesh?: Mesh;
-  private leftAccentMesh?: Mesh;
-  private rightAccentMesh?: Mesh;
 
-  // Pre-allocated reinforced armor plates (for ARMOR archetype & damage states)
-  private leftArmorPlate?: Mesh;
-  private rightArmorPlate?: Mesh;
-  private frontArmorPlate?: Mesh;
+  // Pre-allocated archetype instances
+  private stdChassis?: InstancedMesh;
+  private stdTurret?: InstancedMesh;
+  private stdCannon?: InstancedMesh;
+
+  private fastChassis?: InstancedMesh;
+  private fastTurret?: InstancedMesh;
+  private fastCannon?: InstancedMesh;
+
+  private armorChassis?: InstancedMesh;
+  private armorTurret?: InstancedMesh;
+  private armorCannon?: InstancedMesh;
+
+  // Currently active archetype instances
+  private activeChassis?: InstancedMesh;
+  private activeTurret?: InstancedMesh;
+  private activeCannon?: InstancedMesh;
+
+  // Armor multi-hit damage overlay
+  private armorDamageMesh?: Mesh;
+  private armorDamageMat?: StandardMaterial;
+
+  // Visual Recoil & Motion state
+  private recoilTimer: number = 0;
+  private readonly recoilDuration: number = 0.10; // ~100ms
+  private readonly recoilTravel: number = 0.06;   // 0.06 world units kick
+  private isReducedMotionState: boolean = false;
+  private trackAccumulator: number = 0;
 
   // Phase 12 Temporal Stasis State
   private stasisRingMesh?: Mesh;
   private stasisRingMat?: StandardMaterial;
   private isStasisActiveState: boolean = false;
-
-  private chassisMat?: StandardMaterial;
-  private armorMat?: StandardMaterial;
-  private trackMat?: StandardMaterial;
-  private visorMat?: StandardMaterial;
-  private accentMat?: StandardMaterial;
-  private plateMat?: StandardMaterial;
-
-  // Track animation state
-  private trackAccumulator: number = 0;
-  private leftTrackMesh?: Mesh;
-  private rightTrackMesh?: Mesh;
 
   // Spawning & Destruction state
   private isSpawningState: boolean = true;
@@ -102,7 +110,10 @@ export class EnemyTank extends Tank {
     // Muzzle point at cannon tip
     this.muzzlePoint = new TransformNode('enemyMuzzlePoint', this.scene);
     this.muzzlePoint.parent = this.turretPivot;
-    this.muzzlePoint.position.set(0, 0.05, 0.95);
+    this.muzzlePoint.position.set(0, 0.08, 0.95);
+
+    // Proportionate vehicle height matching 5-layer arena wall depth
+    this.rootNode.scaling.y = 1.5;
 
     this.buildVisuals();
     this.initExplosionVFX();
@@ -110,183 +121,91 @@ export class EnemyTank extends Tank {
   }
 
   /**
-   * Constructs the enemy hull, pre-allocating base meshes and reinforced armor plates.
-   * All meshes are created once in constructor; zero runtime geometry rebuilding.
+   * Constructs pre-allocated hardware instances for STANDARD, FAST, and ARMOR archetypes.
+   * All instances are created once in constructor; zero runtime geometry rebuilding or allocations.
    */
   private buildVisuals(): void {
-    this.chassisMat = new StandardMaterial('enemyChassisMat', this.scene);
-    this.chassisMat.diffuseColor = Color3.FromHexString(COLORS.ENEMY_CHASSIS);
-    this.chassisMat.specularColor = new Color3(0.2, 0.15, 0.1);
-    this.chassisMat.specularPower = 24;
-    this.materials.push(this.chassisMat);
+    const assetLib = TankAssetLibrary.getInstance(this.scene);
+    const uid = Math.floor(Math.random() * 1000000);
 
-    this.armorMat = new StandardMaterial('enemyArmorMat', this.scene);
-    this.armorMat.diffuseColor = Color3.FromHexString(COLORS.ENEMY_ARMOR);
-    this.armorMat.specularColor = new Color3(0.3, 0.25, 0.2);
-    this.armorMat.specularPower = 36;
-    this.materials.push(this.armorMat);
+    // 1. STANDARD Archetype Instances
+    this.stdChassis = assetLib.getStandardChassisMaster().createInstance(`enemy_std_c_${uid}`);
+    this.stdChassis.parent = this.rootNode;
+    this.stdChassis.isPickable = false;
+    this.stdChassis.setEnabled(false);
+    this.meshes.push(this.stdChassis);
 
-    this.trackMat = new StandardMaterial('enemyTrackMat', this.scene);
-    this.trackMat.diffuseColor = Color3.FromHexString(COLORS.ENEMY_TRACKS);
-    this.trackMat.specularColor = new Color3(0.08, 0.08, 0.08);
-    this.materials.push(this.trackMat);
+    this.stdTurret = assetLib.getStandardTurretMaster().createInstance(`enemy_std_t_${uid}`);
+    this.stdTurret.parent = this.turretPivot;
+    this.stdTurret.isPickable = false;
+    this.stdTurret.setEnabled(false);
+    this.meshes.push(this.stdTurret);
 
-    this.accentMat = new StandardMaterial('enemyAccentMat', this.scene);
-    this.accentMat.diffuseColor = Color3.FromHexString(COLORS.ENEMY_ACCENT);
-    this.accentMat.emissiveColor = Color3.FromHexString(COLORS.ENEMY_ACCENT).scale(0.7);
-    this.materials.push(this.accentMat);
+    this.stdCannon = assetLib.getStandardCannonMaster().createInstance(`enemy_std_b_${uid}`);
+    this.stdCannon.parent = this.turretPivot;
+    this.stdCannon.isPickable = false;
+    this.stdCannon.setEnabled(false);
+    this.meshes.push(this.stdCannon);
 
-    this.visorMat = new StandardMaterial('enemyVisorMat', this.scene);
-    this.visorMat.diffuseColor = Color3.FromHexString(COLORS.ENEMY_VISOR);
-    this.visorMat.emissiveColor = Color3.FromHexString(COLORS.ENEMY_VISOR).scale(0.85);
-    this.materials.push(this.visorMat);
+    // 2. FAST Archetype Instances
+    this.fastChassis = assetLib.getFastChassisMaster().createInstance(`enemy_fast_c_${uid}`);
+    this.fastChassis.parent = this.rootNode;
+    this.fastChassis.isPickable = false;
+    this.fastChassis.setEnabled(false);
+    this.meshes.push(this.fastChassis);
 
-    this.plateMat = new StandardMaterial('enemyPlateMat', this.scene);
-    this.plateMat.diffuseColor = new Color3(0.36, 0.27, 0.24);
-    this.plateMat.specularColor = new Color3(0.35, 0.3, 0.25);
-    this.materials.push(this.plateMat);
+    this.fastTurret = assetLib.getFastTurretMaster().createInstance(`enemy_fast_t_${uid}`);
+    this.fastTurret.parent = this.turretPivot;
+    this.fastTurret.isPickable = false;
+    this.fastTurret.setEnabled(false);
+    this.meshes.push(this.fastTurret);
 
-    // Main Chassis
-    this.chassisMesh = MeshBuilder.CreateBox(
-      'enemyChassis',
-      { width: 0.85, height: 0.28, depth: 1.2 },
+    this.fastCannon = assetLib.getFastCannonMaster().createInstance(`enemy_fast_b_${uid}`);
+    this.fastCannon.parent = this.turretPivot;
+    this.fastCannon.isPickable = false;
+    this.fastCannon.setEnabled(false);
+    this.meshes.push(this.fastCannon);
+
+    // 3. ARMOR Archetype Instances
+    this.armorChassis = assetLib.getArmorChassisMaster().createInstance(`enemy_armor_c_${uid}`);
+    this.armorChassis.parent = this.rootNode;
+    this.armorChassis.isPickable = false;
+    this.armorChassis.setEnabled(false);
+    this.meshes.push(this.armorChassis);
+
+    this.armorTurret = assetLib.getArmorTurretMaster().createInstance(`enemy_armor_t_${uid}`);
+    this.armorTurret.parent = this.turretPivot;
+    this.armorTurret.isPickable = false;
+    this.armorTurret.setEnabled(false);
+    this.meshes.push(this.armorTurret);
+
+    this.armorCannon = assetLib.getArmorCannonMaster().createInstance(`enemy_armor_b_${uid}`);
+    this.armorCannon.parent = this.turretPivot;
+    this.armorCannon.isPickable = false;
+    this.armorCannon.setEnabled(false);
+    this.meshes.push(this.armorCannon);
+
+    // 4. Pre-allocated Armor Damage Overlay (for 2 HP and 1 HP scorched states)
+    this.armorDamageMat = new StandardMaterial(`enemyArmorDamageMat_${uid}`, this.scene);
+    this.armorDamageMat.diffuseColor = new Color3(0.12, 0.08, 0.06);
+    this.armorDamageMat.emissiveColor = new Color3(0.35, 0.12, 0.02);
+    this.armorDamageMat.alpha = 0.65;
+    this.materials.push(this.armorDamageMat);
+
+    this.armorDamageMesh = MeshBuilder.CreateBox(
+      `enemyArmorDamage_${uid}`,
+      { width: 0.94, height: 0.19, depth: 0.34 },
       this.scene
     );
-    this.chassisMesh.position.set(0, 0.22, 0);
-    this.chassisMesh.parent = this.rootNode;
-    this.chassisMesh.material = this.chassisMat;
-    this.meshes.push(this.chassisMesh);
+    this.armorDamageMesh.position.set(0, 0.26, 0.52);
+    this.armorDamageMesh.parent = this.rootNode;
+    this.armorDamageMesh.material = this.armorDamageMat;
+    this.armorDamageMesh.isPickable = false;
+    this.armorDamageMesh.setEnabled(false);
+    this.meshes.push(this.armorDamageMesh);
 
-    // Angular Top Plate
-    this.topPlateMesh = MeshBuilder.CreateBox(
-      'enemyTopPlate',
-      { width: 0.75, height: 0.1, depth: 0.95 },
-      this.scene
-    );
-    this.topPlateMesh.position.set(0, 0.38, -0.05);
-    this.topPlateMesh.parent = this.rootNode;
-    this.topPlateMesh.material = this.armorMat;
-    this.meshes.push(this.topPlateMesh);
-
-    // Tracks (Left & Right)
-    const trackWidth = 0.22;
-    const trackHeight = 0.28;
-    const trackDepth = 1.34;
-    const trackOffsetX = 0.52;
-
-    this.leftTrackMesh = MeshBuilder.CreateBox(
-      'enemyLeftTrack',
-      { width: trackWidth, height: trackHeight, depth: trackDepth },
-      this.scene
-    );
-    this.leftTrackMesh.position.set(-trackOffsetX, 0.17, 0);
-    this.leftTrackMesh.parent = this.rootNode;
-    this.leftTrackMesh.material = this.trackMat;
-    this.meshes.push(this.leftTrackMesh);
-
-    this.rightTrackMesh = MeshBuilder.CreateBox(
-      'enemyRightTrack',
-      { width: trackWidth, height: trackHeight, depth: trackDepth },
-      this.scene
-    );
-    this.rightTrackMesh.position.set(trackOffsetX, 0.17, 0);
-    this.rightTrackMesh.parent = this.rootNode;
-    this.rightTrackMesh.material = this.trackMat;
-    this.meshes.push(this.rightTrackMesh);
-
-    // Turret Dome
-    this.turretMesh = MeshBuilder.CreateCylinder(
-      'enemyTurret',
-      { diameter: 0.58, height: 0.22, tessellation: 16 },
-      this.scene
-    );
-    this.turretMesh.position.set(0, 0.11, 0);
-    this.turretMesh.parent = this.turretPivot;
-    this.turretMesh.material = this.armorMat;
-    this.meshes.push(this.turretMesh);
-
-    // Cannon Barrel
-    this.cannonMesh = MeshBuilder.CreateCylinder(
-      'enemyCannon',
-      { diameter: 0.11, height: 0.85, tessellation: 12 },
-      this.scene
-    );
-    this.cannonMesh.rotation.x = Math.PI / 2;
-    this.cannonMesh.position.set(0, 0.05, 0.52);
-    this.cannonMesh.parent = this.turretPivot;
-    this.cannonMesh.material = this.chassisMat;
-    this.meshes.push(this.cannonMesh);
-
-    // Glowing Visor Strip
-    this.visorMesh = MeshBuilder.CreateBox(
-      'enemyVisor',
-      { width: 0.38, height: 0.07, depth: 0.1 },
-      this.scene
-    );
-    this.visorMesh.position.set(0, 0.13, 0.27);
-    this.visorMesh.parent = this.turretPivot;
-    this.visorMesh.material = this.visorMat;
-    this.meshes.push(this.visorMesh);
-
-    // Side Accent Trim
-    this.leftAccentMesh = MeshBuilder.CreateBox(
-      'enemyLeftAccent',
-      { width: 0.04, height: 0.06, depth: 0.8 },
-      this.scene
-    );
-    this.leftAccentMesh.position.set(-0.4, 0.35, 0);
-    this.leftAccentMesh.parent = this.rootNode;
-    this.leftAccentMesh.material = this.accentMat;
-    this.meshes.push(this.leftAccentMesh);
-
-    this.rightAccentMesh = MeshBuilder.CreateBox(
-      'enemyRightAccent',
-      { width: 0.04, height: 0.06, depth: 0.8 },
-      this.scene
-    );
-    this.rightAccentMesh.position.set(0.4, 0.35, 0);
-    this.rightAccentMesh.parent = this.rootNode;
-    this.rightAccentMesh.material = this.accentMat;
-    this.meshes.push(this.rightAccentMesh);
-
-    // Pre-allocated Heavy Armor Plates (for ARMOR archetype and damage states)
-    this.leftArmorPlate = MeshBuilder.CreateBox(
-      'enemyLeftPlate',
-      { width: 0.08, height: 0.26, depth: 1.1 },
-      this.scene
-    );
-    this.leftArmorPlate.position.set(-0.65, 0.25, 0);
-    this.leftArmorPlate.parent = this.rootNode;
-    this.leftArmorPlate.material = this.plateMat;
-    this.meshes.push(this.leftArmorPlate);
-
-    this.rightArmorPlate = MeshBuilder.CreateBox(
-      'enemyRightPlate',
-      { width: 0.08, height: 0.26, depth: 1.1 },
-      this.scene
-    );
-    this.rightArmorPlate.position.set(0.65, 0.25, 0);
-    this.rightArmorPlate.parent = this.rootNode;
-    this.rightArmorPlate.material = this.plateMat;
-    this.meshes.push(this.rightArmorPlate);
-
-    this.frontArmorPlate = MeshBuilder.CreateBox(
-      'enemyFrontPlate',
-      { width: 0.72, height: 0.22, depth: 0.1 },
-      this.scene
-    );
-    this.frontArmorPlate.position.set(0, 0.26, 0.62);
-    this.frontArmorPlate.parent = this.rootNode;
-    this.frontArmorPlate.material = this.plateMat;
-    this.meshes.push(this.frontArmorPlate);
-
-    // Initially disabled (only enabled for ARMOR)
-    this.leftArmorPlate.setEnabled(false);
-    this.rightArmorPlate.setEnabled(false);
-    this.frontArmorPlate.setEnabled(false);
-
-    // Pre-allocated STASIS pulse energy ring (Phase 12)
-    this.stasisRingMat = new StandardMaterial('enemyStasisMat', this.scene);
+    // 5. Pre-allocated STASIS pulse energy ring (Phase 12)
+    this.stasisRingMat = new StandardMaterial(`enemyStasisMat_${uid}`, this.scene);
     this.stasisRingMat.diffuseColor = new Color3(0.75, 0.4, 1.0);
     this.stasisRingMat.emissiveColor = new Color3(0.65, 0.2, 0.95);
     this.stasisRingMat.alpha = 0.55;
@@ -294,13 +213,14 @@ export class EnemyTank extends Tank {
     this.materials.push(this.stasisRingMat);
 
     this.stasisRingMesh = MeshBuilder.CreateTorus(
-      'enemyStasisRing',
+      `enemyStasisRing_${uid}`,
       { diameter: 1.55, thickness: 0.08, tessellation: 20 },
       this.scene
     );
     this.stasisRingMesh.parent = this.rootNode;
     this.stasisRingMesh.position.y = 0.08;
     this.stasisRingMesh.material = this.stasisRingMat;
+    this.stasisRingMesh.isPickable = false;
     this.stasisRingMesh.setEnabled(false);
   }
 
@@ -350,52 +270,55 @@ export class EnemyTank extends Tank {
 
   /**
    * Reconfigures this pooled tank instance for a specific archetype.
-   * Completely resets health, speed, silhouette scales, materials, and damage states.
+   * Completely resets health, speed, and toggles pre-allocated archetype instances.
    */
-  public configure(archetype: EnemyArchetypeConfig): void {
-    this.archetype = archetype;
-    this.maxHp = archetype.maxHp;
-    this.currentHp = archetype.maxHp;
-    this.speed = archetype.speed;
+  public configure(archetypeOrId: EnemyArchetypeConfig | EnemyArchetypeId | string): void {
+    const config: EnemyArchetypeConfig =
+      typeof archetypeOrId === 'string'
+        ? ENEMY_ARCHETYPES[archetypeOrId as EnemyArchetypeId] || ENEMY_ARCHETYPES[EnemyArchetypeId.STANDARD]
+        : archetypeOrId;
 
-    const vp = archetype.visualProfile;
+    this.archetype = config;
+    this.maxHp = config.maxHp;
+    this.currentHp = config.maxHp;
+    this.speed = config.speed;
 
-    // Apply color palette
-    if (this.chassisMat) {
-      this.chassisMat.diffuseColor = Color3.FromHexString(vp.chassisColor);
-    }
-    if (this.armorMat) {
-      this.armorMat.diffuseColor = Color3.FromHexString(vp.armorColor);
-    }
-    if (this.accentMat) {
-      this.accentMat.diffuseColor = Color3.FromHexString(vp.accentColor);
-      this.accentMat.emissiveColor = Color3.FromHexString(vp.accentColor).scale(0.7);
-    }
-    if (this.visorMat) {
-      this.visorMat.diffuseColor = Color3.FromHexString(vp.visorColor);
-      this.visorMat.emissiveColor = Color3.FromHexString(vp.visorColor).scale(0.85);
-    }
-    if (this.plateMat && vp.plateColor) {
-      this.plateMat.diffuseColor = Color3.FromHexString(vp.plateColor);
-      this.plateMat.emissiveColor = new Color3(0, 0, 0);
+    // Disable all archetype instances
+    if (this.stdChassis) this.stdChassis.setEnabled(false);
+    if (this.stdTurret) this.stdTurret.setEnabled(false);
+    if (this.stdCannon) this.stdCannon.setEnabled(false);
+
+    if (this.fastChassis) this.fastChassis.setEnabled(false);
+    if (this.fastTurret) this.fastTurret.setEnabled(false);
+    if (this.fastCannon) this.fastCannon.setEnabled(false);
+
+    if (this.armorChassis) this.armorChassis.setEnabled(false);
+    if (this.armorTurret) this.armorTurret.setEnabled(false);
+    if (this.armorCannon) this.armorCannon.setEnabled(false);
+
+    // Select and enable active archetype instances
+    switch (config.id) {
+      case EnemyArchetypeId.FAST:
+        this.activeChassis = this.fastChassis;
+        this.activeTurret = this.fastTurret;
+        this.activeCannon = this.fastCannon;
+        break;
+      case EnemyArchetypeId.ARMOR:
+        this.activeChassis = this.armorChassis;
+        this.activeTurret = this.armorTurret;
+        this.activeCannon = this.armorCannon;
+        break;
+      case EnemyArchetypeId.STANDARD:
+      default:
+        this.activeChassis = this.stdChassis;
+        this.activeTurret = this.stdTurret;
+        this.activeCannon = this.stdCannon;
+        break;
     }
 
-    // Apply silhouette scaling on pre-created nodes
-    if (this.chassisMesh) {
-      this.chassisMesh.scaling.set(vp.hullWidthScale, vp.hullHeightScale, 1.0);
-    }
-    if (this.topPlateMesh) {
-      this.topPlateMesh.scaling.set(vp.hullWidthScale, vp.hullHeightScale, 1.0);
-    }
-    if (this.turretMesh) {
-      this.turretMesh.scaling.set(vp.turretScale, vp.hullHeightScale, vp.turretScale);
-    }
-
-    // Toggle reinforced armor plates
-    const hasPlates = vp.hasReinforcedPlates;
-    if (this.leftArmorPlate) this.leftArmorPlate.setEnabled(hasPlates);
-    if (this.rightArmorPlate) this.rightArmorPlate.setEnabled(hasPlates);
-    if (this.frontArmorPlate) this.frontArmorPlate.setEnabled(hasPlates);
+    if (this.activeChassis) this.activeChassis.setEnabled(true);
+    if (this.activeTurret) this.activeTurret.setEnabled(true);
+    if (this.activeCannon) this.activeCannon.setEnabled(true);
 
     this.updateDamageVisuals();
   }
@@ -440,34 +363,32 @@ export class EnemyTank extends Tank {
 
   /**
    * Updates visual damage state without rebuilding meshes.
-   * ARMOR transitions: 3 HP (pristine) -> 2 HP (charred sides) -> 1 HP (heavy charred & hot warning emissive).
+   * ARMOR transitions: 3 HP (pristine) -> 2 HP (charred plates) -> 1 HP (heavy scorched & hot warning emissive).
    */
   public updateDamageVisuals(): void {
-    if (!this.plateMat) return;
-
     if (this.archetype.id === EnemyArchetypeId.ARMOR) {
       if (this.currentHp === 3) {
         // Pristine
-        this.plateMat.diffuseColor = Color3.FromHexString(this.archetype.visualProfile.plateColor || '#5c463d');
-        this.plateMat.emissiveColor = new Color3(0, 0, 0);
-        if (this.accentMat) {
-          this.accentMat.emissiveColor = Color3.FromHexString(this.archetype.visualProfile.accentColor).scale(0.7);
-        }
+        if (this.armorDamageMesh) this.armorDamageMesh.setEnabled(false);
       } else if (this.currentHp === 2) {
         // Damage State 1: Charred plates, subtle orange seam glow
-        this.plateMat.diffuseColor = new Color3(0.20, 0.14, 0.12);
-        this.plateMat.emissiveColor = new Color3(0.25, 0.08, 0.02);
-        if (this.accentMat) {
-          this.accentMat.emissiveColor = new Color3(0.9, 0.25, 0.0);
+        if (this.armorDamageMesh && this.armorDamageMat) {
+          this.armorDamageMesh.setEnabled(true);
+          this.armorDamageMat.diffuseColor.set(0.18, 0.12, 0.10);
+          this.armorDamageMat.emissiveColor.set(0.35, 0.12, 0.02);
+          this.armorDamageMat.alpha = 0.55;
         }
       } else if (this.currentHp === 1) {
         // Damage State 2: Heavily scorched, strong pulsing warning emissive
-        this.plateMat.diffuseColor = new Color3(0.12, 0.09, 0.08);
-        this.plateMat.emissiveColor = new Color3(0.65, 0.15, 0.03);
-        if (this.accentMat) {
-          this.accentMat.emissiveColor = new Color3(1.0, 0.10, 0.0);
+        if (this.armorDamageMesh && this.armorDamageMat) {
+          this.armorDamageMesh.setEnabled(true);
+          this.armorDamageMat.diffuseColor.set(0.10, 0.07, 0.06);
+          this.armorDamageMat.emissiveColor.set(0.85, 0.20, 0.04);
+          this.armorDamageMat.alpha = 0.85;
         }
       }
+    } else {
+      if (this.armorDamageMesh) this.armorDamageMesh.setEnabled(false);
     }
   }
 
@@ -518,7 +439,21 @@ export class EnemyTank extends Tank {
   }
 
   /**
-   * Destroys the enemy tank: freezes movement, extinguishes visor, triggers pooled explosion VFX.
+   * Triggers visual cosmetic cannon recoil kick-back upon firing.
+   */
+  public triggerRecoil(): void {
+    this.recoilTimer = this.recoilDuration;
+  }
+
+  /**
+   * Sets reduced motion configuration.
+   */
+  public setReducedMotion(reduced: boolean): void {
+    this.isReducedMotionState = reduced;
+  }
+
+  /**
+   * Destroys the enemy tank: freezes movement, triggers pooled explosion VFX.
    */
   public destroy(): void {
     if (this.isDestroyedState) return;
@@ -527,14 +462,11 @@ export class EnemyTank extends Tank {
     this.currentHp = 0;
     this.setStasisActive(false);
 
-    // Extinguish visor and accents
-    if (this.visorMat) this.visorMat.emissiveColor.set(0.04, 0.04, 0.04);
-    if (this.accentMat) this.accentMat.emissiveColor.set(0.04, 0.04, 0.04);
-
     // Hide physical hull meshes during destruction
-    this.meshes.forEach((mesh) => {
-      mesh.setEnabled(false);
-    });
+    if (this.activeChassis) this.activeChassis.setEnabled(false);
+    if (this.activeTurret) this.activeTurret.setEnabled(false);
+    if (this.activeCannon) this.activeCannon.setEnabled(false);
+    if (this.armorDamageMesh) this.armorDamageMesh.setEnabled(false);
 
     // Fire pooled explosion VFX
     this.explosionActive = true;
@@ -587,10 +519,11 @@ export class EnemyTank extends Tank {
   }
 
   public getMuzzlePoint(): Vector3 {
+    this.muzzlePoint.computeWorldMatrix(true);
     return this.muzzlePoint.getAbsolutePosition();
   }
 
-  public getMeshes(): Mesh[] {
+  public getMeshes(): (Mesh | InstancedMesh)[] {
     return this.meshes;
   }
 
@@ -609,32 +542,29 @@ export class EnemyTank extends Tank {
     this.explosionActive = false;
     this.currentHp = this.maxHp;
 
-    // Restore hull mesh visibility
-    this.meshes.forEach((mesh) => {
-      mesh.setEnabled(true);
-    });
-
-    // Plates only stay enabled if archetype has them
-    const hasPlates = this.archetype.visualProfile.hasReinforcedPlates;
-    if (this.leftArmorPlate) this.leftArmorPlate.setEnabled(hasPlates);
-    if (this.rightArmorPlate) this.rightArmorPlate.setEnabled(hasPlates);
-    if (this.frontArmorPlate) this.frontArmorPlate.setEnabled(hasPlates);
+    // Restore active meshes visibility
+    if (this.activeChassis) {
+      this.activeChassis.setEnabled(true);
+      this.activeChassis.visibility = 1.0;
+      this.activeChassis.position.y = 0;
+    }
+    if (this.activeTurret) {
+      this.activeTurret.setEnabled(true);
+      this.activeTurret.visibility = 1.0;
+    }
+    if (this.activeCannon) {
+      this.activeCannon.setEnabled(true);
+      this.activeCannon.visibility = 1.0;
+      this.activeCannon.position.set(0, 0, 0);
+    }
 
     if (this.explosionRoot) {
       this.explosionRoot.setEnabled(false);
     }
 
-    // Restore pristine materials
+    // Restore pristine materials / damage visuals
     this.updateDamageVisuals();
 
-    if (this.visorMat) {
-      this.visorMat.emissiveColor = Color3.FromHexString(this.archetype.visualProfile.visorColor).scale(0.85);
-    }
-
-    if (this.leftTrackMesh && this.rightTrackMesh) {
-      this.leftTrackMesh.position.y = 0.17;
-      this.rightTrackMesh.position.y = 0.17;
-    }
     this.rootNode.computeWorldMatrix(true);
     this.muzzlePoint.computeWorldMatrix(true);
   }
@@ -649,15 +579,26 @@ export class EnemyTank extends Tank {
 
     if (isMoving) {
       this.trackAccumulator += dt * 12;
-      const vibration = Math.sin(this.trackAccumulator) * 0.005;
-      if (this.leftTrackMesh && this.rightTrackMesh) {
-        this.leftTrackMesh.position.y = 0.17 + vibration;
-        this.rightTrackMesh.position.y = 0.17 - vibration;
+      const vibration = Math.sin(this.trackAccumulator) * 0.004;
+      if (this.activeChassis) {
+        this.activeChassis.position.y = vibration;
       }
+    } else if (this.activeChassis) {
+      this.activeChassis.position.y = 0;
     }
   }
 
   public update(deltaTime: number): void {
+    // Visual cannon recoil kick-back
+    if (this.recoilTimer > 0) {
+      this.recoilTimer = Math.max(0, this.recoilTimer - deltaTime);
+      const progress = 1.0 - (this.recoilTimer / this.recoilDuration);
+      const kick = this.isReducedMotionState ? 0 : this.recoilTravel * Math.sin(progress * Math.PI);
+      if (this.activeCannon) {
+        this.activeCannon.position.z = -kick;
+      }
+    }
+
     if (this.isDestroyedState) {
       if (this.explosionActive) {
         this.explosionTimer += deltaTime;
@@ -691,10 +632,14 @@ export class EnemyTank extends Tank {
     // Spawn pulse animation while in spawning state
     if (this.isSpawningState) {
       this.spawnPulseTimer += deltaTime;
-      const pulse = 0.5 + Math.sin(this.spawnPulseTimer * 12) * 0.4;
-      if (this.visorMat) {
-        this.visorMat.emissiveColor = Color3.FromHexString(this.archetype.visualProfile.visorColor).scale(pulse);
-      }
+      const pulse = 0.4 + Math.abs(Math.sin(this.spawnPulseTimer * 10)) * 0.6;
+      if (this.activeChassis) this.activeChassis.visibility = pulse;
+      if (this.activeTurret) this.activeTurret.visibility = pulse;
+      if (this.activeCannon) this.activeCannon.visibility = pulse;
+    } else {
+      if (this.activeChassis && this.activeChassis.visibility !== 1.0) this.activeChassis.visibility = 1.0;
+      if (this.activeTurret && this.activeTurret.visibility !== 1.0) this.activeTurret.visibility = 1.0;
+      if (this.activeCannon && this.activeCannon.visibility !== 1.0) this.activeCannon.visibility = 1.0;
     }
 
     if (this.isStasisActiveState && this.stasisRingMesh) {

@@ -6,13 +6,15 @@ import {
   StandardMaterial,
   Color3,
   Mesh,
-  LinesMesh
+  LinesMesh,
+  InstancedMesh
 } from '@babylonjs/core';
 import { Tank } from './Tank';
 import { Direction } from '../game/Direction';
-import { PLAYER_CONFIG, STAGE_CONFIG, COLORS, DEBUG, TileType, CONVEYOR_PUSH_SPEED } from '../game/constants';
+import { PLAYER_CONFIG, STAGE_CONFIG, DEBUG, TileType, CONVEYOR_PUSH_SPEED } from '../game/constants';
 import { InputSystem } from '../systems/InputSystem';
 import { CollisionSystem, BoxBounds } from '../systems/CollisionSystem';
+import { TankAssetLibrary } from '../visual/TankAssetLibrary';
 
 export class PlayerTank extends Tank {
   // Input and Collision references
@@ -24,16 +26,19 @@ export class PlayerTank extends Tank {
   private muzzlePoint: TransformNode;
 
   // Visual meshes and materials
-  private meshes: Mesh[] = [];
+  private meshes: (Mesh | InstancedMesh)[] = [];
   private materials: StandardMaterial[] = [];
-  private visorMat?: StandardMaterial;
-  private accentMat?: StandardMaterial;
+  private chassisMesh?: InstancedMesh;
+  private turretMesh?: InstancedMesh;
+  private cannonMesh?: InstancedMesh;
   private debugFootprint?: LinesMesh;
 
-  // Track animation state
+  // Visual Recoil & Motion state
+  private recoilTimer: number = 0;
+  private readonly recoilDuration: number = 0.10; // ~100ms
+  private readonly recoilTravel: number = 0.06;   // 0.06 world units kick
+  private isReducedMotionState: boolean = false;
   private trackAccumulator: number = 0;
-  private leftTrackMesh?: Mesh;
-  private rightTrackMesh?: Mesh;
 
   // Phase 7 Life State & Destruction VFX
   private isDestroyedState: boolean = false;
@@ -67,15 +72,18 @@ export class PlayerTank extends Tank {
     this.collisionSystem = collisionSystem;
     this.speed = PLAYER_CONFIG.SPEED;
 
-    // Build turret pivot (supports future independent rotation in Phase 4+)
+    // Turret pivot: supports independent rotation
     this.turretPivot = new TransformNode('playerTurretPivot', this.scene);
     this.turretPivot.parent = this.rootNode;
     this.turretPivot.position.set(0, 0.35, 0);
 
-    // Build muzzle point at the tip of the cannon
+    // Muzzle point at the tip of the cannon
     this.muzzlePoint = new TransformNode('playerMuzzlePoint', this.scene);
     this.muzzlePoint.parent = this.turretPivot;
-    this.muzzlePoint.position.set(0, 0.05, 0.95);
+    this.muzzlePoint.position.set(0, 0.08, 0.95);
+
+    // Proportionate vehicle height matching 5-layer arena wall depth
+    this.rootNode.scaling.y = 1.5;
 
     this.buildVisuals();
     this.initExplosionVFX();
@@ -86,162 +94,33 @@ export class PlayerTank extends Tank {
   }
 
   /**
-   * Assembles the futuristic, compact player tank visual hierarchy.
+   * Instantiates premium player vehicle components from TankAssetLibrary.
    */
   private buildVisuals(): void {
-    // 1. Materials
-    const chassisMat = new StandardMaterial('playerChassisMat', this.scene);
-    chassisMat.diffuseColor = Color3.FromHexString(COLORS.PLAYER_CHASSIS);
-    chassisMat.specularColor = new Color3(0.25, 0.35, 0.45);
-    chassisMat.specularPower = 32;
-    this.materials.push(chassisMat);
+    const assetLib = TankAssetLibrary.getInstance(this.scene);
 
-    const armorMat = new StandardMaterial('playerArmorMat', this.scene);
-    armorMat.diffuseColor = Color3.FromHexString(COLORS.PLAYER_ARMOR);
-    armorMat.specularColor = new Color3(0.4, 0.45, 0.55);
-    armorMat.specularPower = 48;
-    this.materials.push(armorMat);
+    // 1. Hardware Instanced Chassis
+    this.chassisMesh = assetLib.getPlayerChassisMaster().createInstance('playerChassis');
+    this.chassisMesh.parent = this.rootNode;
+    this.chassisMesh.position.set(0, 0, 0);
+    this.chassisMesh.isPickable = false;
+    this.meshes.push(this.chassisMesh);
 
-    const trackMat = new StandardMaterial('playerTrackMat', this.scene);
-    trackMat.diffuseColor = Color3.FromHexString(COLORS.PLAYER_TRACKS);
-    trackMat.specularColor = new Color3(0.1, 0.1, 0.1);
-    this.materials.push(trackMat);
+    // 2. Hardware Instanced Turret (parented to independent turretPivot)
+    this.turretMesh = assetLib.getPlayerTurretMaster().createInstance('playerTurret');
+    this.turretMesh.parent = this.turretPivot;
+    this.turretMesh.position.set(0, 0, 0);
+    this.turretMesh.isPickable = false;
+    this.meshes.push(this.turretMesh);
 
-    this.accentMat = new StandardMaterial('playerAccentMat', this.scene);
-    this.accentMat.diffuseColor = Color3.FromHexString(COLORS.PLAYER_ACCENT);
-    this.accentMat.emissiveColor = Color3.FromHexString(COLORS.PLAYER_ACCENT).scale(0.7);
-    this.materials.push(this.accentMat);
+    // 3. Hardware Instanced Cannon Barrel (parented to turretPivot, recoils on fire)
+    this.cannonMesh = assetLib.getPlayerCannonMaster().createInstance('playerCannon');
+    this.cannonMesh.parent = this.turretPivot;
+    this.cannonMesh.position.set(0, 0, 0);
+    this.cannonMesh.isPickable = false;
+    this.meshes.push(this.cannonMesh);
 
-    this.visorMat = new StandardMaterial('playerVisorMat', this.scene);
-    this.visorMat.diffuseColor = Color3.FromHexString(COLORS.PLAYER_COCKPIT);
-    this.visorMat.emissiveColor = Color3.FromHexString(COLORS.PLAYER_COCKPIT).scale(0.85);
-    this.materials.push(this.visorMat);
-
-    // 2. Main Chassis Hull
-    const chassis = MeshBuilder.CreateBox(
-      'playerChassis',
-      { width: 0.85, height: 0.28, depth: 1.2 },
-      this.scene
-    );
-    chassis.position.set(0, 0.22, 0);
-    chassis.parent = this.rootNode;
-    chassis.material = chassisMat;
-    this.meshes.push(chassis);
-
-    // Top Hull Slanted Armor Plate
-    const topPlate = MeshBuilder.CreateBox(
-      'playerTopPlate',
-      { width: 0.75, height: 0.1, depth: 0.95 },
-      this.scene
-    );
-    topPlate.position.set(0, 0.38, -0.05);
-    topPlate.parent = this.rootNode;
-    topPlate.material = armorMat;
-    this.meshes.push(topPlate);
-
-    // 3. Treads / Tracks (Left & Right)
-    const trackWidth = 0.22;
-    const trackHeight = 0.28;
-    const trackDepth = 1.34;
-    const trackOffsetX = 0.52;
-
-    this.leftTrackMesh = MeshBuilder.CreateBox(
-      'playerLeftTrack',
-      { width: trackWidth, height: trackHeight, depth: trackDepth },
-      this.scene
-    );
-    this.leftTrackMesh.position.set(-trackOffsetX, 0.17, 0);
-    this.leftTrackMesh.parent = this.rootNode;
-    this.leftTrackMesh.material = trackMat;
-    this.meshes.push(this.leftTrackMesh);
-
-    this.rightTrackMesh = MeshBuilder.CreateBox(
-      'playerRightTrack',
-      { width: trackWidth, height: trackHeight, depth: trackDepth },
-      this.scene
-    );
-    this.rightTrackMesh.position.set(trackOffsetX, 0.17, 0);
-    this.rightTrackMesh.parent = this.rootNode;
-    this.rightTrackMesh.material = trackMat;
-    this.meshes.push(this.rightTrackMesh);
-
-    // Track guards (fenders)
-    const leftFender = MeshBuilder.CreateBox(
-      'playerLeftFender',
-      { width: trackWidth * 1.05, height: 0.05, depth: trackDepth * 1.02 },
-      this.scene
-    );
-    leftFender.position.set(-trackOffsetX, 0.32, 0);
-    leftFender.parent = this.rootNode;
-    leftFender.material = armorMat;
-    this.meshes.push(leftFender);
-
-    const rightFender = MeshBuilder.CreateBox(
-      'playerRightFender',
-      { width: trackWidth * 1.05, height: 0.05, depth: trackDepth * 1.02 },
-      this.scene
-    );
-    rightFender.position.set(trackOffsetX, 0.32, 0);
-    rightFender.parent = this.rootNode;
-    rightFender.material = armorMat;
-    this.meshes.push(rightFender);
-
-    // 4. Turret & Cannon
-    const turret = MeshBuilder.CreateCylinder(
-      'playerTurret',
-      { diameter: 0.68, height: 0.22, tessellation: 8 },
-      this.scene
-    );
-    turret.position.set(0, 0.1, 0);
-    turret.parent = this.turretPivot;
-    turret.material = armorMat;
-    this.meshes.push(turret);
-
-    // Cannon Barrel
-    const cannon = MeshBuilder.CreateBox(
-      'playerCannon',
-      { width: 0.12, height: 0.1, depth: 0.65 },
-      this.scene
-    );
-    cannon.position.set(0, 0.08, 0.55);
-    cannon.parent = this.turretPivot;
-    cannon.material = armorMat;
-    this.meshes.push(cannon);
-
-    // Cannon Muzzle Brake
-    const muzzleBrake = MeshBuilder.CreateBox(
-      'playerMuzzleBrake',
-      { width: 0.16, height: 0.14, depth: 0.12 },
-      this.scene
-    );
-    muzzleBrake.position.set(0, 0.08, 0.88);
-    muzzleBrake.parent = this.turretPivot;
-    muzzleBrake.material = chassisMat;
-    this.meshes.push(muzzleBrake);
-
-    // 5. Visual Accent Nodes (Cyan identification lights)
-    const visor = MeshBuilder.CreateBox(
-      'playerVisor',
-      { width: 0.32, height: 0.08, depth: 0.06 },
-      this.scene
-    );
-    visor.position.set(0, 0.14, 0.33);
-    visor.parent = this.turretPivot;
-    visor.material = this.visorMat;
-    this.meshes.push(visor);
-
-    // Rear engine exhaust / energy vents
-    const rearGlow = MeshBuilder.CreateBox(
-      'playerRearGlow',
-      { width: 0.45, height: 0.06, depth: 0.04 },
-      this.scene
-    );
-    rearGlow.position.set(0, 0.26, -0.6);
-    rearGlow.parent = this.rootNode;
-    rearGlow.material = this.accentMat;
-    this.meshes.push(rearGlow);
-
-    // 6. Pre-allocated Tactical AEGIS Shield Ring
+    // 4. Pre-allocated Tactical AEGIS Shield Ring
     this.aegisShieldMat = new StandardMaterial('playerAegisMat', this.scene);
     this.aegisShieldMat.diffuseColor = new Color3(0.2, 0.75, 1.0);
     this.aegisShieldMat.emissiveColor = new Color3(0.0, 0.85, 1.0);
@@ -292,7 +171,7 @@ export class PlayerTank extends Tank {
   /**
    * Exposes mesh list for shadow caster registration.
    */
-  public getMeshes(): Mesh[] {
+  public getMeshes(): (Mesh | InstancedMesh)[] {
     return this.meshes;
   }
 
@@ -362,7 +241,21 @@ export class PlayerTank extends Tank {
   }
 
   /**
-   * Triggers player tank destruction: extinguishes visor, freezes motion, fires pooled VFX,
+   * Triggers visual cosmetic cannon recoil kick-back upon firing.
+   */
+  public triggerRecoil(): void {
+    this.recoilTimer = this.recoilDuration;
+  }
+
+  /**
+   * Sets reduced motion configuration.
+   */
+  public setReducedMotion(reduced: boolean): void {
+    this.isReducedMotionState = reduced;
+  }
+
+  /**
+   * Triggers player tank destruction: freezes motion, fires pooled VFX,
    * and hides tank physical meshes.
    */
   public destroy(): void {
@@ -371,10 +264,10 @@ export class PlayerTank extends Tank {
     this.isMovingState = false;
     this.isCryoSliding = false;
     this.cryoSlideDirection = null;
-
-    // Extinguish cyan visor and accents
-    if (this.visorMat) this.visorMat.emissiveColor.set(0.04, 0.04, 0.04);
-    if (this.accentMat) this.accentMat.emissiveColor.set(0.04, 0.04, 0.04);
+    this.recoilTimer = 0;
+    if (this.cannonMesh) {
+      this.cannonMesh.position.z = 0;
+    }
 
     // Hide physical hull meshes during destruction
     this.meshes.forEach((mesh) => {
@@ -429,6 +322,10 @@ export class PlayerTank extends Tank {
     this.isDestroyedState = false;
     this.explosionActive = false;
     this.invulnerabilityTimer = 0;
+    this.recoilTimer = 0;
+    if (this.cannonMesh) {
+      this.cannonMesh.position.z = 0;
+    }
 
     // Re-enable physical meshes
     this.meshes.forEach((mesh) => {
@@ -439,18 +336,10 @@ export class PlayerTank extends Tank {
       this.explosionRoot.setEnabled(false);
     }
 
-    // Restore visor and accent emissives
-    if (this.visorMat) {
-      this.visorMat.emissiveColor = Color3.FromHexString(COLORS.PLAYER_COCKPIT).scale(0.85);
-    }
-    if (this.accentMat) {
-      this.accentMat.emissiveColor = Color3.FromHexString(COLORS.PLAYER_ACCENT).scale(0.7);
+    if (this.chassisMesh) {
+      this.chassisMesh.position.y = 0;
     }
 
-    if (this.leftTrackMesh && this.rightTrackMesh) {
-      this.leftTrackMesh.position.y = 0.17;
-      this.rightTrackMesh.position.y = 0.17;
-    }
     this.rootNode.computeWorldMatrix(true);
     this.muzzlePoint.computeWorldMatrix(true);
   }
@@ -502,23 +391,27 @@ export class PlayerTank extends Tank {
    * Main per-frame update loop.
    */
   public update(deltaTime: number, extraAABBs?: BoxBounds[], allowMovement: boolean = true): void {
+    // Update visual cannon recoil kick-back
+    if (this.recoilTimer > 0) {
+      this.recoilTimer = Math.max(0, this.recoilTimer - deltaTime);
+      const progress = 1.0 - (this.recoilTimer / this.recoilDuration);
+      const kick = this.isReducedMotionState ? 0 : this.recoilTravel * Math.sin(progress * Math.PI);
+      if (this.cannonMesh) {
+        this.cannonMesh.position.z = -kick;
+      }
+    }
+
     // Handle post-respawn invulnerability countdown and visual pulsing
     if (this.invulnerabilityTimer > 0) {
       this.invulnerabilityTimer = Math.max(0, this.invulnerabilityTimer - deltaTime);
       const pulse = 0.35 + Math.abs(Math.sin(this.invulnerabilityTimer * 16)) * 0.65;
-      if (this.visorMat) {
-        this.visorMat.emissiveColor = Color3.FromHexString(COLORS.PLAYER_COCKPIT).scale(pulse);
-      }
-      if (this.accentMat) {
-        this.accentMat.emissiveColor = Color3.FromHexString(COLORS.PLAYER_ACCENT).scale(pulse);
-      }
+      this.meshes.forEach((m) => {
+        m.visibility = pulse;
+      });
       if (this.invulnerabilityTimer <= 0) {
-        if (this.visorMat) {
-          this.visorMat.emissiveColor = Color3.FromHexString(COLORS.PLAYER_COCKPIT).scale(0.85);
-        }
-        if (this.accentMat) {
-          this.accentMat.emissiveColor = Color3.FromHexString(COLORS.PLAYER_ACCENT).scale(0.7);
-        }
+        this.meshes.forEach((m) => {
+          m.visibility = 1.0;
+        });
       }
     }
 
@@ -745,13 +638,12 @@ export class PlayerTank extends Tank {
         }
       }
 
-      // Animate treads visually while moving
+      // Animate chassis visually while moving
       if (this.isMovingState) {
         this.trackAccumulator += dt * 15;
-        const slightVibration = Math.sin(this.trackAccumulator) * 0.005;
-        if (this.leftTrackMesh && this.rightTrackMesh) {
-          this.leftTrackMesh.position.y = 0.17 + slightVibration;
-          this.rightTrackMesh.position.y = 0.17 - slightVibration;
+        const slightVibration = Math.sin(this.trackAccumulator) * 0.003;
+        if (this.chassisMesh) {
+          this.chassisMesh.position.y = slightVibration;
         }
       }
     } else {

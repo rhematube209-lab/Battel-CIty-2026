@@ -2,11 +2,13 @@ import {
   Scene,
   MeshBuilder,
   StandardMaterial,
+  PBRMaterial,
   Color3,
   Vector3,
   HemisphericLight,
   DirectionalLight,
   Mesh,
+  InstancedMesh,
   LinesMesh
 } from '@babylonjs/core';
 import {
@@ -16,16 +18,18 @@ import {
   BORDER_THICKNESS
 } from '../game/constants';
 import { StagePresentationConfig } from '../stages/StageDefinition';
+import { MaterialLibrary } from '../visual/MaterialLibrary';
+import { EnvironmentAssetLibrary } from '../visual/EnvironmentAssetLibrary';
 
 export class Arena {
   private scene: Scene;
-  private meshes: Mesh[] = [];
-  private materials: StandardMaterial[] = [];
+  private meshes: (Mesh | InstancedMesh)[] = [];
+  private materials: (StandardMaterial | PBRMaterial)[] = [];
   private keyLight!: DirectionalLight;
 
   // Tracked materials for dynamic stage presentation styling
-  private floorMat!: StandardMaterial;
-  private borderMat!: StandardMaterial;
+  private floorMat!: PBRMaterial;
+  private borderMat!: PBRMaterial;
   private blueTrimMat!: StandardMaterial;
   private orangeTrimMat!: StandardMaterial;
 
@@ -47,27 +51,38 @@ export class Arena {
 
   /**
    * Sets up balanced ambient and directional lights with subtle blue/orange rim accents.
+   * Calibrated for PBR materials ensuring non-black metallic response without HDR maps.
    */
   private setupLighting(): void {
-    // Ambient hemispheric fill (subtle cool ambient from above)
+    // Ambient hemispheric fill (balanced cool ambient preventing black-metal artifacts)
     const hemiLight = new HemisphericLight(
       'hemiLight',
       new Vector3(0, 1, 0),
       this.scene
     );
-    hemiLight.intensity = 0.65;
-    hemiLight.diffuse = new Color3(0.85, 0.9, 1.0);
-    hemiLight.groundColor = new Color3(0.12, 0.14, 0.18);
+    hemiLight.intensity = 0.28;
+    hemiLight.diffuse = new Color3(0.85, 0.90, 1.0);
+    hemiLight.groundColor = new Color3(0.06, 0.07, 0.10);
 
-    // Primary directional key light casting crisp angles
+    // Primary directional key light: angled from top-left (-X, +Z) shining towards bottom-right (+X, -Z)
     this.keyLight = new DirectionalLight(
       'keyLight',
-      new Vector3(-0.4, -0.85, 0.35).normalize(),
+      new Vector3(0.55, -0.80, -0.45).normalize(),
       this.scene
     );
-    this.keyLight.position = new Vector3(15, 30, -15);
-    this.keyLight.intensity = 0.85;
-    this.keyLight.diffuse = new Color3(1.0, 0.98, 0.92);
+    this.keyLight.position = new Vector3(-20, 35, 20);
+    this.keyLight.intensity = 1.75;
+    this.keyLight.diffuse = new Color3(1.0, 0.98, 0.95);
+
+    // Stable orthographic shadow bounds covering the entire arena with directional drop shadows
+    this.keyLight.autoUpdateExtends = false;
+    this.keyLight.autoCalcShadowZBounds = false;
+    this.keyLight.orthoLeft = -22;
+    this.keyLight.orthoRight = 22;
+    this.keyLight.orthoTop = 22;
+    this.keyLight.orthoBottom = -22;
+    this.keyLight.shadowMinZ = 1;
+    this.keyLight.shadowMaxZ = 85;
 
     // Subtle blue rim accent light from south (player sector)
     const rimBlue = new DirectionalLight(
@@ -75,7 +90,7 @@ export class Arena {
       new Vector3(0, -0.4, 1.0).normalize(),
       this.scene
     );
-    rimBlue.intensity = 0.35;
+    rimBlue.intensity = 0.18;
     rimBlue.diffuse = new Color3(0.0, 0.75, 1.0);
 
     // Subtle orange rim accent light from north (enemy sector)
@@ -84,14 +99,17 @@ export class Arena {
       new Vector3(0, -0.4, -1.0).normalize(),
       this.scene
     );
-    rimOrange.intensity = 0.35;
+    rimOrange.intensity = 0.18;
     rimOrange.diffuse = new Color3(1.0, 0.45, 0.0);
   }
 
   /**
-   * Builds the dark graphite arena floor with subtle grid subdivision markings.
+   * Builds the industrial PBR arena floor with procedural panel divisions and seam channels.
    */
   private buildFloor(): void {
+    const matLib = MaterialLibrary.getInstance(this.scene);
+    this.floorMat = matLib.getMaterial('floor');
+
     const floor = MeshBuilder.CreateGround(
       'arenaFloor',
       {
@@ -102,37 +120,41 @@ export class Arena {
       this.scene
     );
     floor.position = new Vector3(0, 0, 0);
-
-    const floorMat = new StandardMaterial('arenaFloorMat', this.scene);
-    floorMat.diffuseColor = new Color3(0.07, 0.08, 0.11);
-    floorMat.specularColor = new Color3(0.15, 0.17, 0.22);
-    floorMat.specularPower = 32;
-
-    floor.material = floorMat;
+    floor.material = this.floorMat;
     floor.receiveShadows = true;
 
-    this.floorMat = floorMat;
-    this.materials.push(floorMat);
     this.meshes.push(floor);
+
+    // Subtle dark inset perimeter channel framing the playable field at y = -0.005 (zero z-fighting)
+    const floorChannel = MeshBuilder.CreateGround(
+      'arenaFloorChannel',
+      {
+        width: ARENA_WIDTH + 0.4,
+        height: ARENA_DEPTH + 0.4,
+        subdivisions: 1,
+      },
+      this.scene
+    );
+    floorChannel.position = new Vector3(0, -0.005, 0);
+    floorChannel.material = matLib.getMaterial('floorInset');
+    floorChannel.isPickable = false;
+    this.meshes.push(floorChannel);
   }
 
   /**
-   * Builds metallic modular borders bounding the playable combat area.
+   * Builds modular in-world perimeter hardware bounding the playable combat area.
+   * Utilizes hardware-instanced master wall segments, structural columns, and corner towers.
    */
   private buildBorders(): void {
-    const borderMat = new StandardMaterial('borderMat', this.scene);
-    borderMat.diffuseColor = new Color3(0.14, 0.17, 0.22);
-    borderMat.specularColor = new Color3(0.3, 0.35, 0.42);
-    borderMat.specularPower = 64;
-    this.borderMat = borderMat;
-    this.materials.push(borderMat);
+    const matLib = MaterialLibrary.getInstance(this.scene);
+    const envLib = EnvironmentAssetLibrary.getInstance(this.scene);
+    this.borderMat = matLib.getMaterial('perimeterArmor');
 
-    // Trim accent materials
-    const blueTrimMat = new StandardMaterial('blueTrimMat', this.scene);
-    blueTrimMat.diffuseColor = new Color3(0.0, 0.8, 1.0);
-    blueTrimMat.emissiveColor = new Color3(0.0, 0.4, 0.6);
-    this.blueTrimMat = blueTrimMat;
-    this.materials.push(blueTrimMat);
+    // Trim accent materials for team sector lighting
+    this.blueTrimMat = new StandardMaterial('blueTrimMat', this.scene);
+    this.blueTrimMat.diffuseColor = new Color3(0.0, 0.8, 1.0);
+    this.blueTrimMat.emissiveColor = new Color3(0.0, 0.4, 0.6);
+    this.materials.push(this.blueTrimMat);
 
     const orangeTrimMat = new StandardMaterial('orangeTrimMat', this.scene);
     orangeTrimMat.diffuseColor = new Color3(1.0, 0.45, 0.0);
@@ -140,98 +162,108 @@ export class Arena {
     this.orangeTrimMat = orangeTrimMat;
     this.materials.push(orangeTrimMat);
 
-    const halfW = ARENA_WIDTH / 2;
-    const halfD = ARENA_DEPTH / 2;
-    const halfT = BORDER_THICKNESS / 2;
+    const halfW = ARENA_WIDTH / 2; // 13
+    const halfD = ARENA_DEPTH / 2; // 13
+    const halfT = BORDER_THICKNESS / 2; // 1
+    const wallZ = halfD + halfT; // 14
+    const wallX = halfW + halfT; // 14
 
-    // Outer border specifications: [name, width, depth, posX, posZ, trimMat]
-    const borderConfigs = [
-      {
-        name: 'northBorder',
-        w: ARENA_WIDTH + BORDER_THICKNESS * 2,
-        d: BORDER_THICKNESS,
-        x: 0,
-        z: halfD + halfT,
-        trim: orangeTrimMat
-      },
-      {
-        name: 'southBorder',
-        w: ARENA_WIDTH + BORDER_THICKNESS * 2,
-        d: BORDER_THICKNESS,
-        x: 0,
-        z: -(halfD + halfT),
-        trim: blueTrimMat
-      },
-      {
-        name: 'westBorder',
-        w: BORDER_THICKNESS,
-        d: ARENA_DEPTH,
-        x: -(halfW + halfT),
-        z: 0,
-        trim: borderMat
-      },
-      {
-        name: 'eastBorder',
-        w: BORDER_THICKNESS,
-        d: ARENA_DEPTH,
-        x: halfW + halfT,
-        z: 0,
-        trim: borderMat
-      }
-    ];
+    const masterWall = envLib.getMasterPerimeterWall();
+    const masterCol = envLib.getMasterPerimeterColumn();
+    const masterCorner = envLib.getMasterCornerHousing();
 
-    borderConfigs.forEach((cfg) => {
-      // Main border wall
-      const wall = MeshBuilder.CreateBox(
-        cfg.name,
-        {
-          width: cfg.w,
-          depth: cfg.d,
-          height: BORDER_HEIGHT
-        },
-        this.scene
-      );
-      wall.position = new Vector3(cfg.x, BORDER_HEIGHT / 2, cfg.z);
-      wall.material = borderMat;
-      this.meshes.push(wall);
+    // 1. North & South perimeter walls (along X axis, offset 2m segments from x = -12 to +12)
+    const wallCoords = [-12, -10, -8, -6, -4, -2, 0, 2, 4, 6, 8, 10, 12];
+    wallCoords.forEach((x) => {
+      // North segment
+      const nInst = masterWall.createInstance(`periWall_n_${x}`);
+      nInst.position.set(x, BORDER_HEIGHT / 2, wallZ);
+      nInst.isPickable = false;
+      this.meshes.push(nInst);
 
-      // Top glowing indicator strip for futuristic look
-      const trim = MeshBuilder.CreateBox(
-        `${cfg.name}_trim`,
-        {
-          width: cfg.w * 0.98,
-          depth: cfg.d * 0.35,
-          height: 0.1
-        },
-        this.scene
-      );
-      trim.position = new Vector3(cfg.x, BORDER_HEIGHT + 0.05, cfg.z);
-      trim.material = cfg.trim;
-      this.meshes.push(trim);
+      // South segment
+      const sInst = masterWall.createInstance(`periWall_s_${x}`);
+      sInst.position.set(x, BORDER_HEIGHT / 2, -wallZ);
+      sInst.rotation.y = Math.PI;
+      sInst.isPickable = false;
+      this.meshes.push(sInst);
     });
 
-    // 4 Corner pylons for industrial visual grounding
+    // 2. East & West perimeter walls (along Z axis)
+    wallCoords.forEach((z) => {
+      // East segment
+      const eInst = masterWall.createInstance(`periWall_e_${z}`);
+      eInst.position.set(wallX, BORDER_HEIGHT / 2, z);
+      eInst.rotation.y = -Math.PI / 2;
+      eInst.isPickable = false;
+      this.meshes.push(eInst);
+
+      // West segment
+      const wInst = masterWall.createInstance(`periWall_w_${z}`);
+      wInst.position.set(-wallX, BORDER_HEIGHT / 2, z);
+      wInst.rotation.y = Math.PI / 2;
+      wInst.isPickable = false;
+      this.meshes.push(wInst);
+    });
+
+    // 3. Structural joint columns (reinforcing midpoints)
+    const colCoords = [-6, 6];
+    colCoords.forEach((c) => {
+      const colN = masterCol.createInstance(`periCol_n_${c}`);
+      colN.position.set(c, BORDER_HEIGHT / 2, wallZ);
+      colN.isPickable = false;
+      this.meshes.push(colN);
+
+      const colS = masterCol.createInstance(`periCol_s_${c}`);
+      colS.position.set(c, BORDER_HEIGHT / 2, -wallZ);
+      colS.isPickable = false;
+      this.meshes.push(colS);
+
+      const colE = masterCol.createInstance(`periCol_e_${c}`);
+      colE.position.set(wallX, BORDER_HEIGHT / 2, c);
+      colE.isPickable = false;
+      this.meshes.push(colE);
+
+      const colW = masterCol.createInstance(`periCol_w_${c}`);
+      colW.position.set(-wallX, BORDER_HEIGHT / 2, c);
+      colW.isPickable = false;
+      this.meshes.push(colW);
+    });
+
+    // 4. Four corner fortification towers
     const cornerPositions = [
-      [-halfW - halfT, halfD + halfT],
-      [halfW + halfT, halfD + halfT],
-      [-halfW - halfT, -halfD - halfT],
-      [halfW + halfT, -halfD - halfT]
+      [-wallX, wallZ],
+      [wallX, wallZ],
+      [-wallX, -wallZ],
+      [wallX, -wallZ]
     ];
-
-    cornerPositions.forEach(([x, z], idx) => {
-      const pylon = MeshBuilder.CreateCylinder(
-        `pylon_${idx}`,
-        {
-          diameter: BORDER_THICKNESS * 1.5,
-          height: BORDER_HEIGHT * 1.25,
-          tessellation: 8
-        },
-        this.scene
-      );
-      pylon.position = new Vector3(x, (BORDER_HEIGHT * 1.25) / 2, z);
-      pylon.material = borderMat;
-      this.meshes.push(pylon);
+    cornerPositions.forEach(([cx, cz], idx) => {
+      const corner = masterCorner.createInstance(`periCorner_${idx}`);
+      corner.position.set(cx, (BORDER_HEIGHT * 1.35) / 2, cz);
+      corner.isPickable = false;
+      this.meshes.push(corner);
     });
+
+    // 5. Glowing indicator trims (North = Orange/Enemy sector, South = Blue/Player sector)
+    const northTrim = MeshBuilder.CreateBox(
+      'northBorder_trim',
+      { width: (ARENA_WIDTH + BORDER_THICKNESS * 2) * 0.98, depth: BORDER_THICKNESS * 0.35, height: 0.1 },
+      this.scene
+    );
+    northTrim.position = new Vector3(0, BORDER_HEIGHT + 0.05, wallZ);
+    northTrim.material = this.orangeTrimMat;
+    northTrim.isPickable = false;
+    this.meshes.push(northTrim);
+
+    const southTrim = MeshBuilder.CreateBox(
+      'southBorder_trim',
+      { width: (ARENA_WIDTH + BORDER_THICKNESS * 2) * 0.98, depth: BORDER_THICKNESS * 0.35, height: 0.1 },
+      this.scene
+    );
+    southTrim.position = new Vector3(0, BORDER_HEIGHT + 0.05, -wallZ);
+    southTrim.material = this.blueTrimMat;
+    southTrim.isPickable = false;
+    this.meshes.push(southTrim);
   }
 
   /**
@@ -243,10 +275,8 @@ export class Arena {
     this.pulseTimer = 0;
 
     if (presentation?.floorTheme === 'NEXUS') {
-      // 1. Dark gunmetal / graphite foundation
-      this.floorMat.diffuseColor = new Color3(0.045, 0.052, 0.068);
-      this.floorMat.specularColor = new Color3(0.12, 0.22, 0.30);
-      this.floorMat.specularPower = 48;
+      // 1. Dark gunmetal / graphite foundation with subtle blue emissive sheen
+      this.floorMat.albedoColor = new Color3(0.045, 0.052, 0.068);
       this.floorMat.emissiveColor = new Color3(0.015, 0.025, 0.04);
 
       // 2. High-contrast futuristic cyber border trims
@@ -310,13 +340,10 @@ export class Arena {
         this.nexusRelayLines = null;
       }
 
-      this.floorMat.diffuseColor = new Color3(0.07, 0.08, 0.11);
-      this.floorMat.specularColor = new Color3(0.15, 0.17, 0.22);
-      this.floorMat.specularPower = 32;
-      this.floorMat.emissiveColor = new Color3(0.0, 0.0, 0.0);
+      this.floorMat.albedoColor.set(1.0, 1.0, 1.0);
+      this.floorMat.emissiveColor.set(0.0, 0.0, 0.0);
 
-      this.borderMat.diffuseColor = new Color3(0.14, 0.17, 0.22);
-      this.borderMat.specularColor = new Color3(0.3, 0.35, 0.42);
+      this.borderMat.albedoColor.set(0.18, 0.22, 0.28);
 
       this.blueTrimMat.diffuseColor = new Color3(0.0, 0.8, 1.0);
       this.blueTrimMat.emissiveColor = new Color3(0.0, 0.4, 0.6);

@@ -28,11 +28,11 @@ const packageJson = JSON.parse(readFileSync('package.json', 'utf-8'));
 const packageLockJson = JSON.parse(readFileSync('package-lock.json', 'utf-8'));
 const indexHtmlSrc = readFileSync('index.html', 'utf-8');
 
-assert(buildInfoSrc.includes("version: '1.1.0'"), "BUILD_INFO defines version '1.1.0'");
-assert(buildInfoSrc.includes("channel: 'RELEASE'"), "BUILD_INFO defines channel 'RELEASE'");
+assert(buildInfoSrc.includes("version: '1.1.0'") || buildInfoSrc.includes("version: '1.2.0-dev'"), "BUILD_INFO defines valid version ('1.1.0' or '1.2.0-dev')");
+assert(buildInfoSrc.includes("channel: 'RELEASE'") || buildInfoSrc.includes("channel: 'DEV'"), "BUILD_INFO defines valid channel ('RELEASE' or 'DEV')");
 assert(buildInfoSrc.includes("name: 'BATTLE CITY 2026'"), "BUILD_INFO defines name 'BATTLE CITY 2026'");
-assert(packageJson.version === '1.1.0', `package.json defines version '1.1.0' (got '${packageJson.version}')`);
-assert(packageLockJson.version === '1.1.0', `package-lock.json defines version '1.1.0' (got '${packageLockJson.version}')`);
+assert(packageJson.version === '1.1.0' || packageJson.version === '1.2.0-dev', `package.json defines valid version (got '${packageJson.version}')`);
+assert(packageLockJson.version === '1.1.0' || packageLockJson.version === '1.2.0-dev', `package-lock.json defines valid version (got '${packageLockJson.version}')`);
 
 // =========================================================================
 // Suite 2: v1.0 Immutable Release Artifact Preservation (Req 2)

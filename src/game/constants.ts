@@ -8,9 +8,9 @@ export const TILE_SIZE = 2.0;
 
 export const ARENA_WIDTH = GRID_COLS * TILE_SIZE;   // 26.0 world units
 export const ARENA_DEPTH = GRID_ROWS * TILE_SIZE;   // 26.0 world units
-export const WALL_HEIGHT = 1.6;
+export const WALL_HEIGHT = 2.0;
 export const BORDER_THICKNESS = 0.8;
-export const BORDER_HEIGHT = 1.8;
+export const BORDER_HEIGHT = 2.6;
 
 export enum TileType {
   EMPTY = 0,
@@ -42,10 +42,10 @@ export interface GridPosition {
 }
 
 export const VISUAL_HEIGHTS = {
-  BRICK: 1.2,
-  STEEL: 1.2,
-  BUSH: 0.9,
-  BASE: 1.4,
+  BRICK: 2.0,
+  STEEL: 2.0,
+  BUSH: 1.1,
+  BASE: 2.0,
   SPAWN_MARKER: 0.02,
   CRYO: 0.04,
   CONVEYOR: 0.04,

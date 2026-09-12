@@ -38,7 +38,7 @@ for (const line of lines) {
 console.log('=============================================================');
 console.log('AUTOMATED TEST SUITE AGGREGATION & REGRESSION REPORT');
 console.log('=============================================================');
-console.log(`Total Test Suites Registered in package.json: 24`);
+console.log(`Total Test Suites Registered in package.json: 26`);
 console.log(`Suites with Numeric Summary Footers:         ${suiteResults.length}`);
 console.log(`Suites with Checkmark Format (Suites 1-4):   4`);
 console.log(`Total Execution Time:                         ${elapsed}s\n`);

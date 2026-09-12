@@ -3,12 +3,15 @@ import {
   Vector3,
   MeshBuilder,
   StandardMaterial,
+  PBRMaterial,
   Color3,
   Mesh,
-  TransformNode
+  TransformNode,
+  Texture
 } from '@babylonjs/core';
 import { TILE_SIZE, VISUAL_HEIGHTS } from '../game/constants';
 import { StagePresentationConfig } from '../stages/StageDefinition';
+import { MaterialLibrary } from '../visual/MaterialLibrary';
 
 export enum BaseState {
   ACTIVE = 0,
@@ -23,8 +26,9 @@ interface ExplosionParticle {
 }
 
 /**
- * Base entity representing the player's futuristic command node.
- * Owns reversible active and destroyed visual states and pre-allocated explosion VFX.
+ * Base entity representing the player's protected life guardian (Angel Sanctuary Base).
+ * Overhauled to feature the sacred Angel Guardian monument with radiant divine glow,
+ * protective sanctuary pedestal altar, and shattered stone relic state on destruction.
  */
 export class Base {
   private scene: Scene;
@@ -37,15 +41,22 @@ export class Base {
   private pulseTimer: number = 0;
 
   // Visual meshes
-  private pedestalMesh: Mesh;
+  private basePlatform: Mesh;
+  private conduitTray: Mesh;
+  private stanchions: Mesh[] = [];
   private reactorMesh: Mesh;
   private coreMesh: Mesh;
+  private containmentRings: Mesh[] = [];
+  private angelMesh: Mesh;
   private breachMeshes: Mesh[] = [];
 
   // Materials
-  private pedestalMat: StandardMaterial;
-  private coreMat: StandardMaterial;
-  private breachMat: StandardMaterial;
+  private housingMat: PBRMaterial;
+  private trimMat: PBRMaterial;
+  private coreMat: PBRMaterial & { diffuseColor: Color3 };
+  private breachMat: PBRMaterial;
+  private angelMat: StandardMaterial;
+  private angelTexture: Texture | null = null;
 
   // Pooled explosion VFX
   private explosionActive: boolean = false;
@@ -62,63 +73,124 @@ export class Base {
     this.rootNode = new TransformNode(name, this.scene);
     this.rootNode.position.copyFrom(this.worldPosition);
 
-    // 1. Pre-allocate Materials
-    this.pedestalMat = new StandardMaterial('basePedestalMat', this.scene);
-    this.pedestalMat.diffuseColor = new Color3(0.12, 0.16, 0.22);
-    this.pedestalMat.specularColor = new Color3(0.4, 0.45, 0.55);
+    const matLib = MaterialLibrary.getInstance(this.scene);
+    const envMats = matLib.getMaterials();
 
-    this.coreMat = new StandardMaterial('baseCoreMat', this.scene);
-    this.coreMat.diffuseColor = new Color3(0.0, 0.82, 1.0);
-    this.coreMat.emissiveColor = new Color3(0.0, 0.45, 0.7);
+    // 1. Materials (shared PBR with a cloned core for dedicated stage pulse modulation)
+    this.housingMat = envMats.commandHousing;
+    this.trimMat = envMats.commandTrim;
+    this.breachMat = this.housingMat;
 
-    this.breachMat = new StandardMaterial('baseBreachMat', this.scene);
-    this.breachMat.diffuseColor = new Color3(0.1, 0.1, 0.12);
-    this.breachMat.specularColor = new Color3(0.15, 0.15, 0.15);
+    // Clone core material so its sinusoidal emissive pulse doesn't mutate shared assets
+    this.coreMat = envMats.commandCore.clone('base_pbr_core_inst') as any;
+    this.coreMat.diffuseColor = this.coreMat.albedoColor;
 
-    // 2. Build Base Geometry
-    // Hexagonal reinforced command platform
-    this.pedestalMesh = MeshBuilder.CreateCylinder(
-      'basePedestal',
+    // 2. Build Upgraded Base Geometry (Footprint bounded within 2.0 x 2.0 tile cell)
+    // 2.1 Heavy mechanical octagonal foundation platform with chamfered footing
+    this.basePlatform = MeshBuilder.CreateCylinder(
+      'basePlatform',
       {
-        diameter: TILE_SIZE * 0.88,
-        height: 0.5,
-        tessellation: 6
+        diameter: TILE_SIZE * 0.93, // 1.86 units
+        height: 0.24,
+        tessellation: 8,
       },
       this.scene
     );
-    this.pedestalMesh.position.set(0, 0.25, 0);
-    this.pedestalMesh.material = this.pedestalMat;
-    this.pedestalMesh.parent = this.rootNode;
+    this.basePlatform.position.set(0, 0.12, 0);
+    this.basePlatform.material = this.housingMat;
+    this.basePlatform.parent = this.rootNode;
 
-    // Inner protective power reactor node
-    this.reactorMesh = MeshBuilder.CreateBox(
-      'baseReactor',
+    // 2.2 Inset cybernetic conduit tray with accent rim
+    this.conduitTray = MeshBuilder.CreateCylinder(
+      'baseConduitTray',
       {
-        width: 0.8,
-        depth: 0.8,
-        height: 0.65
+        diameter: TILE_SIZE * 0.82, // 1.64 units
+        height: 0.28,
+        tessellation: 8,
       },
       this.scene
     );
-    this.reactorMesh.position.set(0, 0.55 + 0.325, 0);
-    this.reactorMesh.material = this.pedestalMat;
+    this.conduitTray.position.set(0, 0.14, 0);
+    this.conduitTray.material = this.trimMat;
+    this.conduitTray.parent = this.rootNode;
+
+    // 2.3 Four corner structural shock-absorbing stanchions / braces
+    const braceRadius = 0.65;
+    const braceAngles = [Math.PI / 4, (3 * Math.PI) / 4, (5 * Math.PI) / 4, (7 * Math.PI) / 4];
+    braceAngles.forEach((angle, idx) => {
+      const stanchion = MeshBuilder.CreateBox(
+        `baseStanchion_${idx}`,
+        { width: 0.22, depth: 0.32, height: 0.48 },
+        this.scene
+      );
+      stanchion.position.set(
+        Math.cos(angle) * braceRadius,
+        0.25,
+        Math.sin(angle) * braceRadius
+      );
+      stanchion.rotation.y = -angle;
+      stanchion.rotation.x = 0.18; // Inward tilt
+      stanchion.material = this.housingMat;
+      stanchion.parent = this.rootNode;
+      this.stanchions.push(stanchion);
+    });
+
+    // 2.4 Armored sanctuary altar pedestal
+    this.reactorMesh = MeshBuilder.CreateCylinder(
+      'baseSanctuaryAltar',
+      {
+        diameter: 1.16,
+        height: 0.36,
+        tessellation: 8,
+      },
+      this.scene
+    );
+    this.reactorMesh.position.set(0, 0.32, 0);
+    this.reactorMesh.material = this.housingMat;
     this.reactorMesh.parent = this.rootNode;
 
-    // Glowing futuristic tactical reactor core
+    // 2.5 Glowing sanctuary halo platform
     this.coreMesh = MeshBuilder.CreateCylinder(
-      'baseCore',
+      'baseCoreHalo',
       {
-        diameter: 0.6,
-        height: 0.2,
-        tessellation: 8
+        diameter: 1.10,
+        height: 0.12,
+        tessellation: 16,
       },
       this.scene
     );
-    this.coreMesh.position.set(0, VISUAL_HEIGHTS.BASE + 0.05, 0);
+    this.coreMesh.position.set(0, 0.44, 0);
     this.coreMesh.material = this.coreMat;
     this.coreMesh.parent = this.rootNode;
 
-    // 3. Build Ruined/Destroyed Breach Overlays (hidden by default)
+    // 2.6 Angel Guardian Emblem (HERO defended object / protected life of player)
+    this.angelMat = new StandardMaterial('baseAngelMat', this.scene);
+    try {
+      this.angelTexture = new Texture('/assets/angel_base.png', this.scene, true, false);
+      this.angelTexture.hasAlpha = true;
+      this.angelMat.diffuseTexture = this.angelTexture;
+      this.angelMat.emissiveTexture = this.angelTexture;
+      this.angelMat.opacityTexture = this.angelTexture;
+    } catch {
+      this.angelTexture = null;
+    }
+    this.angelMat.diffuseColor = new Color3(1.0, 1.0, 1.0);
+    this.angelMat.emissiveColor = new Color3(0.90, 0.82, 0.70);
+    this.angelMat.backFaceCulling = false;
+
+    this.angelMesh = MeshBuilder.CreatePlane(
+      'baseAngelEmblem',
+      { width: 1.70, height: 1.70 },
+      this.scene
+    );
+    // Tilted slightly backward (~14 deg) so the angel faces the angled top-down camera directly
+    this.angelMesh.position.set(0, 1.18, 0);
+    this.angelMesh.rotation.x = 0.24;
+    this.angelMesh.material = this.angelMat;
+    this.angelMesh.parent = this.rootNode;
+    this.angelMesh.isPickable = false;
+
+    // 3. Ruined / Destroyed Breach Overlays (hidden by default)
     const breach1 = MeshBuilder.CreateBox(
       'baseBreach1',
       { width: 0.45, height: 0.3, depth: 0.5 },
@@ -197,9 +269,16 @@ export class Base {
 
     this.state = BaseState.DESTROYED;
 
-    // 1. Extinguish cyan energy core (reactor failure)
-    this.coreMat.diffuseColor = new Color3(0.12, 0.12, 0.14);
-    this.coreMat.emissiveColor = new Color3(0.04, 0.04, 0.04);
+    // 1. Shatter/dim angel into ruined dark stone relic
+    this.angelMat.emissiveColor.set(0.0, 0.0, 0.0);
+    this.angelMat.diffuseColor.set(0.18, 0.18, 0.20);
+    this.angelMesh.rotation.z = 0.18;
+    this.angelMesh.position.y = 0.95;
+
+    // Extinguish core halo
+    this.coreMat.diffuseColor.set(0.12, 0.12, 0.14);
+    this.coreMat.albedoColor.set(0.12, 0.12, 0.14);
+    this.coreMat.emissiveColor.set(0.04, 0.04, 0.04);
 
     // 2. Enable charred breach wreckage
     for (let i = 0; i < this.breachMeshes.length; i++) {
@@ -222,26 +301,36 @@ export class Base {
     if (this.state === BaseState.ACTIVE) {
       if (presentation?.floorTheme === 'NEXUS') {
         this.coreMat.diffuseColor.set(0.0, 0.85, 1.0);
+        this.coreMat.albedoColor.set(0.0, 0.85, 1.0);
         this.coreMat.emissiveColor.set(0.10, 0.40, 0.75);
       } else {
         this.coreMat.diffuseColor.set(0.0, 0.82, 1.0);
+        this.coreMat.albedoColor.set(0.0, 0.82, 1.0);
         this.coreMat.emissiveColor.set(0.0, 0.45, 0.7);
       }
     }
   }
 
   /**
-   * Restores the base to its pristine active state with glowing cyan core.
+   * Restores the base to its pristine active state with glowing cyan core and radiant Angel.
    */
   public reset(): void {
     this.state = BaseState.ACTIVE;
 
+    // Restore radiant angel guardian
+    this.angelMat.emissiveColor.set(0.90, 0.82, 0.70);
+    this.angelMat.diffuseColor.set(1.0, 1.0, 1.0);
+    this.angelMesh.rotation.z = 0;
+    this.angelMesh.position.set(0, 1.18, 0);
+
     // Restore active reactor core glow based on presentation
     if (this.currentPresentation?.floorTheme === 'NEXUS') {
       this.coreMat.diffuseColor.set(0.0, 0.85, 1.0);
+      this.coreMat.albedoColor.set(0.0, 0.85, 1.0);
       this.coreMat.emissiveColor.set(0.10, 0.40, 0.75);
     } else {
       this.coreMat.diffuseColor.set(0.0, 0.82, 1.0);
+      this.coreMat.albedoColor.set(0.0, 0.82, 1.0);
       this.coreMat.emissiveColor.set(0.0, 0.45, 0.7);
     }
 
@@ -283,40 +372,53 @@ export class Base {
   }
 
   /**
-   * Updates explosion VFX animation and ambient presentation core pulse.
+   * Updates explosion VFX animation and ambient divine angel breathing pulse.
    */
   public update(deltaTime: number, reducedMotion: boolean = false): void {
-    // 1. Ambient cyan/violet energy core pulse when active
+    // 1. Ambient divine angel breathing pulse when active
+    if (this.state === BaseState.ACTIVE) {
+      this.pulseTimer += deltaTime;
+      if (!reducedMotion) {
+        const pulse = 0.82 + 0.18 * Math.sin(this.pulseTimer * 3.0);
+        this.angelMat.emissiveColor.set(
+          0.90 * pulse,
+          0.82 * pulse,
+          0.70 * pulse
+        );
+      }
+    }
+
+    // 2. Ambient cyan/violet energy core halo pulse when active
     if (this.state === BaseState.ACTIVE && this.currentPresentation?.pulseEnabled) {
       if (reducedMotion) {
         this.coreMat.emissiveColor.set(0.10, 0.40, 0.75);
       } else {
-        this.pulseTimer += deltaTime;
         const rate = this.currentPresentation.pulseRate ?? 2.2;
         const pulse = 0.5 + 0.5 * Math.sin((this.pulseTimer * 2 * Math.PI) / rate);
         // Sinusoidal cyan <-> violet modulation (zero allocations)
         this.coreMat.emissiveColor.set(
           0.05 + 0.18 * pulse,
           0.32 + 0.18 * (1 - pulse),
-          0.65 + 0.22 * pulse
+          0.65 + 0.20 * pulse
         );
       }
     }
 
-    // 2. Destruction explosion VFX animation
-    if (!this.explosionActive) return;
+    // 3. Explosion VFX update
+    if (this.explosionActive) {
+      this.explosionTimer += deltaTime;
+      const progress = Math.min(1.0, this.explosionTimer / this.explosionDuration);
 
-    this.explosionTimer += deltaTime;
-    const progress = this.explosionTimer / this.explosionDuration;
-
-    if (progress >= 1.0) {
-      this.explosionActive = false;
-      this.flashMesh.setEnabled(false);
-      for (let i = 0; i < this.explosionParticles.length; i++) {
-        this.explosionParticles[i].mesh.setEnabled(false);
+      if (progress >= 1.0) {
+        this.explosionActive = false;
+        this.flashMesh.setEnabled(false);
+        for (let i = 0; i < this.explosionParticles.length; i++) {
+          this.explosionParticles[i].mesh.setEnabled(false);
+        }
+        return;
       }
-    } else {
-      // Expanding flash ring
+
+      // Flash expansion and fade
       const flashScale = 0.3 + progress * 1.8;
       this.flashMesh.scaling.setAll(flashScale);
 
@@ -331,6 +433,14 @@ export class Base {
         p.mesh.scaling.setAll(particleScale);
       }
     }
+  }
+
+  public getBasePlatform(): Mesh {
+    return this.basePlatform;
+  }
+
+  public getReactorMesh(): Mesh {
+    return this.reactorMesh;
   }
 
   public getState(): BaseState {
@@ -351,9 +461,13 @@ export class Base {
 
   public dispose(): void {
     this.reset();
-    this.pedestalMesh.dispose();
+    this.basePlatform.dispose();
+    this.conduitTray.dispose();
+    this.stanchions.forEach((s) => s.dispose());
     this.reactorMesh.dispose();
     this.coreMesh.dispose();
+    this.angelMesh.dispose();
+    this.containmentRings.forEach((r) => r.dispose());
     for (let i = 0; i < this.breachMeshes.length; i++) {
       this.breachMeshes[i].dispose();
     }
@@ -361,9 +475,9 @@ export class Base {
     for (let i = 0; i < this.explosionParticles.length; i++) {
       this.explosionParticles[i].mesh.dispose();
     }
-    this.pedestalMat.dispose();
+    this.angelTexture?.dispose();
+    this.angelMat.dispose();
     this.coreMat.dispose();
-    this.breachMat.dispose();
     this.flashMat.dispose();
     this.sparkMat.dispose();
     this.rootNode.dispose();

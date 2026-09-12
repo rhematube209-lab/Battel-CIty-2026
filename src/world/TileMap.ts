@@ -4,7 +4,8 @@ import {
   MeshBuilder,
   StandardMaterial,
   Color3,
-  Mesh
+  Mesh,
+  ShadowGenerator
 } from '@babylonjs/core';
 import {
   GRID_ROWS,
@@ -20,6 +21,7 @@ import { Tile, BrickQuadrant, SolidAABB } from './Tile';
 import { Base } from './Base';
 import { LevelDefinition, validateLevelDefinition } from '../levels/LevelDefinition';
 import { StagePresentationConfig } from '../stages/StageDefinition';
+import { EnvironmentAssetLibrary } from '../visual/EnvironmentAssetLibrary';
 
 export interface BrickDamageResult {
   destroyed: boolean;
@@ -53,6 +55,9 @@ export class TileMap {
 
   // Debug visual meshes
   private debugMeshes: Mesh[] = [];
+
+  // Cached shadow generator for stage transitions
+  private cachedShadowGenerator?: ShadowGenerator;
 
   /**
    * Constructs the TileMap.
@@ -416,6 +421,37 @@ export class TileMap {
     return this.basePos ? this.basePos.clone() : null;
   }
 
+  public getMasterSteel(): Mesh | undefined {
+    return this.masterSteel;
+  }
+
+  public getMasterBrickQuadrant(): Mesh | undefined {
+    return this.masterBrickQuadrant;
+  }
+
+  /**
+   * Registers all solid wall instances (brick quadrants and steel blocks) as shadow casters.
+   */
+  public registerShadowCasters(shadowGenerator: ShadowGenerator): void {
+    this.cachedShadowGenerator = shadowGenerator;
+
+    for (let r = 0; r < GRID_ROWS; r++) {
+      for (let c = 0; c < GRID_COLS; c++) {
+        const tile = this.tiles[r]?.[c];
+        if (!tile) continue;
+
+        if (tile.type === TileType.BRICK && tile.quadrantMeshes) {
+          if (tile.quadrantMeshes.tl) shadowGenerator.addShadowCaster(tile.quadrantMeshes.tl);
+          if (tile.quadrantMeshes.tr) shadowGenerator.addShadowCaster(tile.quadrantMeshes.tr);
+          if (tile.quadrantMeshes.bl) shadowGenerator.addShadowCaster(tile.quadrantMeshes.bl);
+          if (tile.quadrantMeshes.br) shadowGenerator.addShadowCaster(tile.quadrantMeshes.br);
+        } else if (tile.type === TileType.STEEL && tile.mesh) {
+          shadowGenerator.addShadowCaster(tile.mesh);
+        }
+      }
+    }
+  }
+
   /**
    * Seamlessly reconfigures the TileMap for a new stage without recreating master meshes or materials.
    * Disposes previous stage-owned instances and base entity, then constructs new level geometry.
@@ -454,121 +490,22 @@ export class TileMap {
     if (base && presentation) {
       base.setPresentation(presentation);
     }
+
+    // 6. Re-register shadow casters for the newly created stage instances
+    if (this.cachedShadowGenerator) {
+      this.registerShadowCasters(this.cachedShadowGenerator);
+    }
   }
 
   /**
    * Prepares shared materials and master geometry templates for hardware instancing.
    */
   private initMasterMeshes(): void {
-    // 1. Brick Material (Warm terracotta/orange with specular highlights)
-    const brickMat = new StandardMaterial('brickMat', this.scene);
-    brickMat.diffuseColor = new Color3(0.78, 0.31, 0.16);
-    brickMat.specularColor = new Color3(0.2, 0.15, 0.12);
-    brickMat.specularPower = 32;
-    this.sharedMaterials.push(brickMat);
-
-    // Brick Master Quadrant: 1.0 x 1.0 tile divided into 4 quadrants (0.95 x 0.95 width/depth)
-    // Providing a subtle mortar gap between adjacent bricks
-    const qSize = (TILE_SIZE / 2) * 0.95; // 0.95 units
-    this.masterBrickQuadrant = MeshBuilder.CreateBox(
-      'masterBrickQuadrant',
-      {
-        width: qSize,
-        depth: qSize,
-        height: VISUAL_HEIGHTS.BRICK
-      },
-      this.scene
-    );
-    this.masterBrickQuadrant.material = brickMat;
-    this.masterBrickQuadrant.setEnabled(false); // Template only
-
-    // 2. Steel Material (Silver-gunmetal industrial reinforced plate)
-    const steelMat = new StandardMaterial('steelMat', this.scene);
-    steelMat.diffuseColor = new Color3(0.48, 0.54, 0.62);
-    steelMat.specularColor = new Color3(0.65, 0.72, 0.85);
-    steelMat.specularPower = 64;
-    this.sharedMaterials.push(steelMat);
-
-    // Steel Master Mesh: Industrial reinforced plate with beveled inner inset
-    const steelBase = MeshBuilder.CreateBox(
-      'steelBase',
-      {
-        width: TILE_SIZE * 0.96,
-        depth: TILE_SIZE * 0.96,
-        height: VISUAL_HEIGHTS.STEEL
-      },
-      this.scene
-    );
-    const steelPlate = MeshBuilder.CreateBox(
-      'steelPlate',
-      {
-        width: TILE_SIZE * 0.75,
-        depth: TILE_SIZE * 0.75,
-        height: VISUAL_HEIGHTS.STEEL + 0.05
-      },
-      this.scene
-    );
-    steelPlate.position.y = 0.025;
-
-    this.masterSteel = Mesh.MergeMeshes(
-      [steelBase, steelPlate],
-      true,
-      true,
-      undefined,
-      false,
-      true
-    ) as Mesh;
-    this.masterSteel.name = 'masterSteel';
-    this.masterSteel.material = steelMat;
-    this.masterSteel.setEnabled(false);
-
-    // 3. Bush Material (Lush emerald green)
-    const bushMat = new StandardMaterial('bushMat', this.scene);
-    bushMat.diffuseColor = new Color3(0.06, 0.72, 0.42);
-    bushMat.specularColor = new Color3(0.05, 0.15, 0.08);
-    bushMat.specularPower = 16;
-    this.sharedMaterials.push(bushMat);
-
-    // Bush Master Mesh: Clustered low-poly foliage cluster
-    const foliage1 = MeshBuilder.CreateSphere(
-      'foliage1',
-      { diameterX: 0.95, diameterY: VISUAL_HEIGHTS.BUSH, diameterZ: 0.95, segments: 6 },
-      this.scene
-    );
-    foliage1.position.set(-0.35, 0, -0.35);
-
-    const foliage2 = MeshBuilder.CreateSphere(
-      'foliage2',
-      { diameterX: 1.05, diameterY: VISUAL_HEIGHTS.BUSH * 1.05, diameterZ: 1.05, segments: 6 },
-      this.scene
-    );
-    foliage2.position.set(0.3, 0.05, 0.25);
-
-    const foliage3 = MeshBuilder.CreateSphere(
-      'foliage3',
-      { diameterX: 0.9, diameterY: VISUAL_HEIGHTS.BUSH * 0.9, diameterZ: 0.9, segments: 6 },
-      this.scene
-    );
-    foliage3.position.set(-0.25, 0.02, 0.35);
-
-    const foliage4 = MeshBuilder.CreateSphere(
-      'foliage4',
-      { diameterX: 0.92, diameterY: VISUAL_HEIGHTS.BUSH * 0.95, diameterZ: 0.92, segments: 6 },
-      this.scene
-    );
-    foliage4.position.set(0.35, 0, -0.3);
-
-    this.masterBush = Mesh.MergeMeshes(
-      [foliage1, foliage2, foliage3, foliage4],
-      true,
-      true,
-      undefined,
-      false,
-      true
-    ) as Mesh;
-    this.masterBush.name = 'masterBush';
-    this.masterBush.material = bushMat;
-    this.masterBush.setEnabled(false);
+    // 1. Obtain shared master templates from EnvironmentAssetLibrary (Phase 25)
+    const envLib = EnvironmentAssetLibrary.getInstance(this.scene);
+    this.masterBrickQuadrant = envLib.getMasterBrickQuadrant();
+    this.masterSteel = envLib.getMasterSteel();
+    this.masterBush = envLib.getMasterBush();
 
     // 4. Player Spawn Marker Material
     this.playerSpawnMat = new StandardMaterial('playerSpawnMat', this.scene);
@@ -885,6 +822,7 @@ export class TileMap {
     );
     marker.position.set(wp.x, VISUAL_HEIGHTS.SPAWN_MARKER, wp.z);
     marker.material = markerMat;
+    marker.receiveShadows = true;
     tile.mesh = marker;
   }
 
@@ -925,18 +863,10 @@ export class TileMap {
     }
     this.tiles = [];
 
-    if (this.masterBrickQuadrant) {
-      this.masterBrickQuadrant.dispose();
-      this.masterBrickQuadrant = undefined;
-    }
-    if (this.masterSteel) {
-      this.masterSteel.dispose();
-      this.masterSteel = undefined;
-    }
-    if (this.masterBush) {
-      this.masterBush.dispose();
-      this.masterBush = undefined;
-    }
+    // Master templates (masterBrickQuadrant, masterSteel, masterBush) are managed by EnvironmentAssetLibrary
+    this.masterBrickQuadrant = undefined;
+    this.masterSteel = undefined;
+    this.masterBush = undefined;
     if (this.masterCryo) {
       this.masterCryo.dispose();
       this.masterCryo = undefined;

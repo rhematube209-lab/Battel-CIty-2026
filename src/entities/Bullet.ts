@@ -3,19 +3,25 @@ import {
   Vector3,
   MeshBuilder,
   StandardMaterial,
-  Mesh
+  Mesh,
+  Color3
 } from '@babylonjs/core';
 import { Direction, directionToRotation } from '../game/Direction';
 import { PROJECTILE_CONFIG, ProjectileTeam } from '../game/constants';
 
 /**
  * Bullet entity representing a single logical and visual projectile.
+ * Features an incandescent white-hot supersonic core slug and dual-plane
+ * fiery plasma tracer fins (+ cross-planes) matching high-energy tank combat.
  * Managed and simulated by ProjectileSystem.
- * Decoupled from input and tank lifecycle.
  */
 export class Bullet {
   private scene: Scene;
   private mesh: Mesh;
+  private coreMesh: Mesh;
+  private horizontalFin: Mesh;
+  private verticalFin: Mesh;
+
   private active: boolean = false;
   private position: Vector3 = new Vector3();
   private direction: Direction = Direction.NORTH;
@@ -24,26 +30,75 @@ export class Bullet {
   private lifetime: number = 0;
   private maxLifetime: number = PROJECTILE_CONFIG.MAX_LIFETIME;
 
+  private static coreMaterial: StandardMaterial | null = null;
+
+  private static getCoreMaterial(scene: Scene): StandardMaterial {
+    if (!Bullet.coreMaterial || Bullet.coreMaterial.getScene() !== scene) {
+      const mat = new StandardMaterial('bullet_core_mat', scene);
+      mat.diffuseColor = new Color3(1.0, 1.0, 1.0);
+      mat.emissiveColor = new Color3(1.0, 1.0, 0.95);
+      mat.disableLighting = true;
+      Bullet.coreMaterial = mat;
+    }
+    return Bullet.coreMaterial;
+  }
+
   constructor(name: string, scene: Scene, sharedMaterial: StandardMaterial) {
     this.scene = scene;
 
-    // Compact aerodynamic projectile slug oriented along local Z
-    this.mesh = MeshBuilder.CreateBox(
-      name,
+    // 1. Root container mesh for unified transform & enablement
+    this.mesh = new Mesh(name, this.scene);
+    this.mesh.isPickable = false;
+    this.mesh.setEnabled(false);
+
+    // 2. White-hot supersonic core dart (solid incandescent slug along center spine)
+    this.coreMesh = MeshBuilder.CreateBox(
+      `${name}_core`,
       {
-        width: PROJECTILE_CONFIG.WIDTH,
-        height: PROJECTILE_CONFIG.HEIGHT,
-        depth: PROJECTILE_CONFIG.LENGTH
+        width: PROJECTILE_CONFIG.WIDTH * 0.75,  // 0.09
+        height: PROJECTILE_CONFIG.HEIGHT * 0.75, // 0.09
+        depth: 0.38
       },
       this.scene
     );
-    this.mesh.material = sharedMaterial;
-    this.mesh.setEnabled(false);
-    this.mesh.isPickable = false;
+    this.coreMesh.position.z = -0.05; // Head at +0.14, core spans [-0.24, +0.14]
+    this.coreMesh.material = Bullet.getCoreMaterial(this.scene);
+    this.coreMesh.isPickable = false;
+    this.coreMesh.parent = this.mesh;
+
+    // 3. Horizontal plasma tracer fin (XZ plane, length along Z: head at +0.15, tail at -1.35)
+    this.horizontalFin = MeshBuilder.CreatePlane(
+      `${name}_h`,
+      { width: 1.50, height: 0.40 },
+      this.scene
+    );
+    this.horizontalFin.position.z = -0.60;
+    this.horizontalFin.rotation.x = Math.PI / 2;
+    this.horizontalFin.rotation.y = Math.PI / 2;
+    this.horizontalFin.material = sharedMaterial;
+    this.horizontalFin.isPickable = false;
+    this.horizontalFin.parent = this.mesh;
+
+    // 4. Vertical plasma tracer fin (YZ plane, length along Z: head at +0.15, tail at -1.35)
+    this.verticalFin = MeshBuilder.CreatePlane(
+      `${name}_v`,
+      { width: 1.50, height: 0.40 },
+      this.scene
+    );
+    this.verticalFin.position.z = -0.60;
+    this.verticalFin.rotation.y = Math.PI / 2;
+    this.verticalFin.material = sharedMaterial;
+    this.verticalFin.isPickable = false;
+    this.verticalFin.parent = this.mesh;
   }
 
   public setMaterial(material: StandardMaterial): void {
-    this.mesh.material = material;
+    this.horizontalFin.material = material;
+    this.verticalFin.material = material;
+  }
+
+  public getMesh(): Mesh {
+    return this.mesh;
   }
 
   /**
@@ -130,10 +185,10 @@ export class Bullet {
   }
 
   /**
-   * Disposes visual mesh.
+   * Disposes visual mesh and child components.
    */
   public dispose(): void {
     this.deactivate();
-    this.mesh.dispose();
+    this.mesh.dispose(false, true);
   }
 }

@@ -4,9 +4,9 @@
  */
 export const BUILD_INFO = {
   name: 'BATTLE CITY 2026',
-  channel: 'RELEASE',
-  version: '1.1.0',
-  buildDate: '2026-09-11',
+  channel: 'DEV',
+  version: '1.2.0-dev',
+  buildDate: '2026-09-12',
 } as const;
 
 export function getBuildDiagnosticString(): string {

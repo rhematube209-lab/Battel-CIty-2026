@@ -26,7 +26,7 @@ console.log('Test Suite 1: Release Candidate Build Identity (Req 2, 86)');
 const buildInfoSrc = readFileSync('src/config/buildInfo.ts', 'utf-8');
 assert(buildInfoSrc.includes("name: 'BATTLE CITY 2026'"), "BUILD_INFO defines name 'BATTLE CITY 2026'");
 assert(buildInfoSrc.includes("channel: 'RELEASE'") || buildInfoSrc.includes("channel: 'DEV'") || buildInfoSrc.includes("channel: 'RC'"), "BUILD_INFO defines valid channel ('RELEASE', 'DEV', or 'RC')");
-assert(buildInfoSrc.includes("version: '1.0.0'") || buildInfoSrc.includes("version: '1.1.0-dev'") || buildInfoSrc.includes("version: '1.1.0-rc.1'") || buildInfoSrc.includes("version: '1.1.0'"), "BUILD_INFO defines valid version");
+assert(buildInfoSrc.includes("version: '1.0.0'") || buildInfoSrc.includes("version: '1.1.0-dev'") || buildInfoSrc.includes("version: '1.1.0-rc.1'") || buildInfoSrc.includes("version: '1.1.0'") || buildInfoSrc.includes("version: '1.2.0-dev'"), "BUILD_INFO defines valid version");
 assert(buildInfoSrc.includes('getBuildDiagnosticString'), 'BUILD_INFO exports getBuildDiagnosticString() diagnostic formatter');
 
 // =========================================================================

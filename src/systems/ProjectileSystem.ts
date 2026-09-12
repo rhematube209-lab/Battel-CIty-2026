@@ -5,12 +5,14 @@ import {
   StandardMaterial,
   Color3,
   Mesh,
-  TransformNode
+  TransformNode,
+  DynamicTexture,
+  Texture
 } from '@babylonjs/core';
 import { Bullet } from '../entities/Bullet';
 import { PlayerTank } from '../entities/PlayerTank';
 import { EnemyTank } from '../entities/EnemyTank';
-import { Direction, directionToVector } from '../game/Direction';
+import { Direction, directionToVector, directionToRotation } from '../game/Direction';
 import {
   PROJECTILE_CONFIG,
   STAGE_CONFIG,
@@ -32,6 +34,17 @@ interface PooledImpact {
   active: boolean;
   timer: number;
   duration: number;
+}
+
+interface PooledMuzzleFlash {
+  root: TransformNode;
+  hPlane: Mesh;
+  vPlane: Mesh;
+  coneMesh: Mesh;
+  mat: StandardMaterial;
+  timer: number;
+  duration: number;
+  active: boolean;
 }
 
 interface DebrisParticle {
@@ -71,10 +84,12 @@ export class ProjectileSystem {
   private readonly arenaHalfWidth: number = ARENA_WIDTH / 2; // 13.0
   private readonly arenaHalfDepth: number = ARENA_DEPTH / 2; // 13.0
 
-  // Muzzle flash visual
-  private muzzleFlashMesh: Mesh;
-  private muzzleFlashMaterial: StandardMaterial;
-  private muzzleFlashTimer: number = 0;
+  // Procedural Fiery Textures & Muzzle Flash Pool
+  private playerBulletTexture: DynamicTexture | null = null;
+  private enemyBulletTexture: DynamicTexture | null = null;
+  private playerFlashTexture: DynamicTexture | null = null;
+  private enemyFlashTexture: DynamicTexture | null = null;
+  private muzzleFlashPool: PooledMuzzleFlash[] = [];
 
   // Impact feedback pool & materials
   private impactPool: PooledImpact[] = [];
@@ -118,39 +133,45 @@ export class ProjectileSystem {
     this.scene = scene;
     this.tileMap = tileMap;
 
-    // 1. Shared Projectile Materials
+    // 1. Procedural Fiery Plasma Tracer Textures
+    this.playerBulletTexture = this.generateFieryTracerTexture(true);
+    this.enemyBulletTexture = this.generateFieryTracerTexture(false);
+    this.playerFlashTexture = this.generateMuzzleFlashTexture(true);
+    this.enemyFlashTexture = this.generateMuzzleFlashTexture(false);
+
+    // 2. Shared Fiery Projectile Materials
     this.sharedPlayerBulletMaterial = new StandardMaterial('bulletPlayerMat', this.scene);
     this.sharedPlayerBulletMaterial.diffuseColor = new Color3(1.0, 1.0, 1.0);
-    this.sharedPlayerBulletMaterial.emissiveColor = new Color3(0.0, 0.9, 1.0); // #00e5ff
-    this.sharedPlayerBulletMaterial.specularColor = new Color3(1.0, 1.0, 1.0);
-    this.sharedPlayerBulletMaterial.specularPower = 64;
+    this.sharedPlayerBulletMaterial.emissiveColor = new Color3(1.0, 0.95, 0.90);
+    this.sharedPlayerBulletMaterial.disableLighting = true;
+    this.sharedPlayerBulletMaterial.backFaceCulling = false;
+    this.sharedPlayerBulletMaterial.alphaMode = 1;
+    if (this.playerBulletTexture) {
+      this.sharedPlayerBulletMaterial.diffuseTexture = this.playerBulletTexture;
+      this.sharedPlayerBulletMaterial.emissiveTexture = this.playerBulletTexture;
+      this.sharedPlayerBulletMaterial.opacityTexture = this.playerBulletTexture;
+    }
 
     this.sharedEnemyBulletMaterial = new StandardMaterial('bulletEnemyMat', this.scene);
     this.sharedEnemyBulletMaterial.diffuseColor = new Color3(1.0, 1.0, 1.0);
-    this.sharedEnemyBulletMaterial.emissiveColor = Color3.FromHexString(COLORS.BULLET_ENEMY_GLOW);
-    this.sharedEnemyBulletMaterial.specularColor = new Color3(1.0, 0.8, 0.5);
-    this.sharedEnemyBulletMaterial.specularPower = 64;
+    this.sharedEnemyBulletMaterial.emissiveColor = new Color3(1.0, 0.90, 0.85);
+    this.sharedEnemyBulletMaterial.disableLighting = true;
+    this.sharedEnemyBulletMaterial.backFaceCulling = false;
+    this.sharedEnemyBulletMaterial.alphaMode = 1;
+    if (this.enemyBulletTexture) {
+      this.sharedEnemyBulletMaterial.diffuseTexture = this.enemyBulletTexture;
+      this.sharedEnemyBulletMaterial.emissiveTexture = this.enemyBulletTexture;
+      this.sharedEnemyBulletMaterial.opacityTexture = this.enemyBulletTexture;
+    }
 
-    // 2. Pre-allocate Bullet Pool (Fixed capacity: 8)
+    // 3. Pre-allocate Bullet Pool (Fixed capacity: 16)
     for (let i = 0; i < PROJECTILE_CONFIG.POOL_SIZE; i++) {
       const bullet = new Bullet(`pooledBullet_${i}`, this.scene, this.sharedPlayerBulletMaterial);
       this.pool.push(bullet);
     }
 
-    // 3. Muzzle Flash Effect (Single pre-allocated emissive diamond flare)
-    this.muzzleFlashMaterial = new StandardMaterial('muzzleFlashMat', this.scene);
-    this.muzzleFlashMaterial.diffuseColor = new Color3(1.0, 1.0, 1.0);
-    this.muzzleFlashMaterial.emissiveColor = new Color3(0.5, 0.95, 1.0);
-    this.muzzleFlashMaterial.disableLighting = true;
-
-    this.muzzleFlashMesh = MeshBuilder.CreatePolyhedron(
-      'muzzleFlashMesh',
-      { type: 1, size: 0.18 },
-      this.scene
-    );
-    this.muzzleFlashMesh.material = this.muzzleFlashMaterial;
-    this.muzzleFlashMesh.setEnabled(false);
-    this.muzzleFlashMesh.isPickable = false;
+    // 4. Pre-allocate Starburst Muzzle Flash Pool (6 reusable instances)
+    this.initMuzzleFlashPool(6);
 
     // 4. Impact Materials
     this.brickImpactMat = new StandardMaterial('brickImpactMat', this.scene);
@@ -264,6 +285,263 @@ export class ProjectileSystem {
   }
 
   /**
+   * Pre-allocates reusable multi-plane starburst muzzle flash instances.
+   */
+  private initMuzzleFlashPool(count: number): void {
+    for (let i = 0; i < count; i++) {
+      const root = new TransformNode(`muzzleFlashRoot_${i}`, this.scene);
+      root.setEnabled(false);
+
+      const mat = new StandardMaterial(`muzzleFlashMat_${i}`, this.scene);
+      mat.diffuseColor = new Color3(1.0, 1.0, 1.0);
+      mat.emissiveColor = new Color3(1.0, 0.95, 0.90);
+      mat.disableLighting = true;
+      mat.backFaceCulling = false;
+      mat.alphaMode = 1; // Additive glow
+      if (this.playerFlashTexture) {
+        mat.diffuseTexture = this.playerFlashTexture;
+        mat.emissiveTexture = this.playerFlashTexture;
+        mat.opacityTexture = this.playerFlashTexture;
+      }
+
+      // Horizontal starburst plane (XZ) - bold radiant multi-point star
+      const hPlane = MeshBuilder.CreatePlane(`mFlash_h_${i}`, { size: 1.40 }, this.scene);
+      hPlane.rotation.x = Math.PI / 2;
+      hPlane.material = mat;
+      hPlane.parent = root;
+      hPlane.isPickable = false;
+
+      // Vertical starburst plane (XY facing forward)
+      const vPlane = MeshBuilder.CreatePlane(`mFlash_v_${i}`, { size: 1.40 }, this.scene);
+      vPlane.material = mat;
+      vPlane.parent = root;
+      vPlane.isPickable = false;
+
+      // Forward conical blast plume
+      const coneMesh = MeshBuilder.CreateCylinder(
+        `mFlash_cone_${i}`,
+        {
+          height: 0.45,
+          diameterTop: 0.50,
+          diameterBottom: 0.08,
+          tessellation: 8
+        },
+        this.scene
+      );
+      coneMesh.rotation.x = -Math.PI / 2; // Opens forward along local +Z
+      coneMesh.position.z = 0.22; // Project forward from muzzle
+      coneMesh.material = mat;
+      coneMesh.parent = root;
+      coneMesh.isPickable = false;
+
+      this.muzzleFlashPool.push({
+        root,
+        hPlane,
+        vPlane,
+        coneMesh,
+        mat,
+        timer: 0,
+        duration: 0.09,
+        active: false
+      });
+    }
+  }
+
+  /**
+   * Generates a 512x128 procedural supersonic fire tracer texture.
+   * U=0 is the leading blast head (+Z), U=1 is the trailing needle tail (-Z).
+   */
+  private generateFieryTracerTexture(isPlayer: boolean): DynamicTexture | null {
+    if (typeof OffscreenCanvas === 'undefined' && typeof document === 'undefined') {
+      return null;
+    }
+    try {
+      const w = 512;
+      const h = 128;
+      const tex = new DynamicTexture(
+        isPlayer ? 'tex_fire_tracer_player' : 'tex_fire_tracer_enemy',
+        { width: w, height: h },
+        this.scene,
+        false
+      );
+      const ctx = tex.getContext() as CanvasRenderingContext2D;
+      ctx.clearRect(0, 0, w, h);
+
+      const cy = h / 2; // 64
+
+      // 1. Broad outer flame envelope: aerodynamic supersonic teardrop lance
+      // Nose tip at X=0, rounded blast head widening up to X=70, then tapering smoothly to razor needle at X=500
+      const outerGrad = ctx.createLinearGradient(0, 0, w, 0);
+      if (isPlayer) {
+        outerGrad.addColorStop(0.00, 'rgba(255, 255, 255, 1.0)');
+        outerGrad.addColorStop(0.08, 'rgba(255, 245, 180, 0.98)');
+        outerGrad.addColorStop(0.22, 'rgba(255, 190, 35, 0.95)');
+        outerGrad.addColorStop(0.48, 'rgba(255, 100, 10, 0.85)');
+        outerGrad.addColorStop(0.72, 'rgba(255, 45, 0, 0.60)');
+        outerGrad.addColorStop(0.90, 'rgba(200, 20, 0, 0.30)');
+        outerGrad.addColorStop(1.00, 'rgba(150, 0, 0, 0.0)');
+      } else {
+        outerGrad.addColorStop(0.00, 'rgba(255, 255, 255, 1.0)');
+        outerGrad.addColorStop(0.08, 'rgba(255, 235, 160, 0.98)');
+        outerGrad.addColorStop(0.22, 'rgba(255, 150, 25, 0.95)');
+        outerGrad.addColorStop(0.48, 'rgba(255, 60, 5, 0.85)');
+        outerGrad.addColorStop(0.72, 'rgba(210, 25, 0, 0.60)');
+        outerGrad.addColorStop(0.90, 'rgba(170, 10, 0, 0.30)');
+        outerGrad.addColorStop(1.00, 'rgba(120, 0, 0, 0.0)');
+      }
+
+      ctx.fillStyle = outerGrad;
+      ctx.beginPath();
+      // Aerodynamic parabolic nose curving from (0, cy) -> (70, cy - 44) -> tapering to (500, cy)
+      ctx.moveTo(0, cy);
+      ctx.bezierCurveTo(5, cy - 25, 30, cy - 44, 70, cy - 44);
+      ctx.bezierCurveTo(180, cy - 40, 340, cy - 14, 500, cy);
+      ctx.bezierCurveTo(340, cy + 14, 180, cy + 40, 70, cy + 44);
+      ctx.bezierCurveTo(30, cy + 44, 5, cy + 25, 0, cy);
+      ctx.closePath();
+      ctx.fill();
+
+      // 2. Mid-plasma luminous channel (intense golden flame body)
+      const midGrad = ctx.createLinearGradient(0, 0, w * 0.82, 0);
+      midGrad.addColorStop(0.00, 'rgba(255, 255, 255, 1.0)');
+      midGrad.addColorStop(0.12, 'rgba(255, 250, 200, 0.96)');
+      midGrad.addColorStop(0.38, 'rgba(255, 195, 55, 0.90)');
+      midGrad.addColorStop(0.70, 'rgba(255, 110, 10, 0.60)');
+      midGrad.addColorStop(1.00, 'rgba(255, 50, 0, 0.0)');
+
+      ctx.fillStyle = midGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, cy);
+      ctx.bezierCurveTo(5, cy - 16, 25, cy - 26, 60, cy - 26);
+      ctx.bezierCurveTo(160, cy - 22, 280, cy - 8, 410, cy);
+      ctx.bezierCurveTo(280, cy + 8, 160, cy + 22, 60, cy + 26);
+      ctx.bezierCurveTo(25, cy + 26, 5, cy + 16, 0, cy);
+      ctx.closePath();
+      ctx.fill();
+
+      // 3. Ultra-bright incandescent white core streak along center spine
+      const coreGrad = ctx.createLinearGradient(0, 0, w * 0.68, 0);
+      coreGrad.addColorStop(0.00, 'rgba(255, 255, 255, 1.0)');
+      coreGrad.addColorStop(0.35, 'rgba(255, 255, 255, 0.98)');
+      coreGrad.addColorStop(0.70, 'rgba(255, 240, 180, 0.75)');
+      coreGrad.addColorStop(1.00, 'rgba(255, 180, 40, 0.0)');
+
+      ctx.fillStyle = coreGrad;
+      ctx.beginPath();
+      ctx.moveTo(0, cy);
+      ctx.bezierCurveTo(5, cy - 7, 25, cy - 10, 60, cy - 10);
+      ctx.lineTo(180, cy - 4);
+      ctx.lineTo(330, cy);
+      ctx.lineTo(180, cy + 4);
+      ctx.bezierCurveTo(25, cy + 10, 5, cy + 7, 0, cy);
+      ctx.closePath();
+      ctx.fill();
+
+      // 4. Forward incandescent blast shock bloom at front head (X = 0..50)
+      const headBloom = ctx.createRadialGradient(20, cy, 0, 20, cy, 48);
+      headBloom.addColorStop(0.00, 'rgba(255, 255, 255, 1.0)');
+      headBloom.addColorStop(0.35, 'rgba(255, 245, 200, 0.92)');
+      headBloom.addColorStop(0.68, 'rgba(255, 175, 35, 0.55)');
+      headBloom.addColorStop(1.00, 'rgba(255, 75, 0, 0.0)');
+      ctx.fillStyle = headBloom;
+      ctx.beginPath();
+      ctx.arc(20, cy, 48, 0, Math.PI * 2);
+      ctx.fill();
+
+      tex.hasAlpha = true;
+      tex.update(false);
+      tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+      tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+      return tex;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
+   * Generates a 256x256 procedural starburst muzzle flash texture with sharp radiant rays.
+   */
+  private generateMuzzleFlashTexture(isPlayer: boolean): DynamicTexture | null {
+    if (typeof OffscreenCanvas === 'undefined' && typeof document === 'undefined') {
+      return null;
+    }
+    try {
+      const size = 256;
+      const tex = new DynamicTexture(
+        isPlayer ? 'tex_muzzle_flash_player' : 'tex_muzzle_flash_enemy',
+        { width: size, height: size },
+        this.scene,
+        false
+      );
+      const ctx = tex.getContext() as CanvasRenderingContext2D;
+      ctx.clearRect(0, 0, size, size);
+
+      const cx = size / 2;
+      const cy = size / 2;
+
+      // 1. Central radiant bloom gradient
+      const radGrad = ctx.createRadialGradient(cx, cy, 0, cx, cy, cx * 0.95);
+      radGrad.addColorStop(0.00, 'rgba(255, 255, 255, 1.0)');
+      radGrad.addColorStop(0.12, 'rgba(255, 245, 190, 0.98)');
+      radGrad.addColorStop(0.28, isPlayer ? 'rgba(255, 195, 45, 0.90)' : 'rgba(255, 150, 25, 0.90)');
+      radGrad.addColorStop(0.55, isPlayer ? 'rgba(255, 110, 10, 0.55)' : 'rgba(235, 55, 5, 0.55)');
+      radGrad.addColorStop(0.80, 'rgba(210, 30, 0, 0.18)');
+      radGrad.addColorStop(1.00, 'rgba(0, 0, 0, 0.0)');
+      ctx.fillStyle = radGrad;
+      ctx.fillRect(0, 0, size, size);
+
+      // 2. Radiant starburst flare rays with intense golden/amber bodies
+      const drawRay = (angle: number, length: number, baseWidth: number, rayColor: string) => {
+        ctx.save();
+        ctx.translate(cx, cy);
+        ctx.rotate(angle);
+        const rayGrad = ctx.createLinearGradient(0, 0, length, 0);
+        rayGrad.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+        rayGrad.addColorStop(0.20, rayColor);
+        rayGrad.addColorStop(0.65, 'rgba(255, 90, 5, 0.50)');
+        rayGrad.addColorStop(1.0, 'rgba(255, 40, 0, 0.0)');
+        ctx.fillStyle = rayGrad;
+        ctx.beginPath();
+        ctx.moveTo(0, -baseWidth / 2);
+        ctx.lineTo(length, 0);
+        ctx.lineTo(0, baseWidth / 2);
+        ctx.closePath();
+        ctx.fill();
+        ctx.restore();
+      };
+
+      const goldColor = isPlayer ? 'rgba(255, 225, 90, 0.95)' : 'rgba(255, 185, 45, 0.95)';
+      const orangeColor = isPlayer ? 'rgba(255, 160, 30, 0.90)' : 'rgba(255, 105, 15, 0.90)';
+
+      // 4 primary cardinal spikes (sharp needle flares)
+      drawRay(0, cx * 0.98, 11, goldColor);
+      drawRay(Math.PI / 2, cx * 0.90, 9, goldColor);
+      drawRay(Math.PI, cx * 0.98, 11, goldColor);
+      drawRay(-Math.PI / 2, cx * 0.90, 9, goldColor);
+
+      // 4 diagonal secondary spikes (matching reference backward/forward angled rays)
+      drawRay(Math.PI / 4, cx * 0.82, 8, orangeColor);
+      drawRay(-Math.PI / 4, cx * 0.82, 8, orangeColor);
+      drawRay(3 * Math.PI / 4, cx * 0.82, 8, orangeColor);
+      drawRay(-3 * Math.PI / 4, cx * 0.82, 8, orangeColor);
+
+      // 4 tertiary accent micro-spikes for brilliant incandescent twinkle
+      drawRay(Math.PI / 8, cx * 0.55, 4.5, 'rgba(255, 240, 150, 0.7)');
+      drawRay(-Math.PI / 8, cx * 0.55, 4.5, 'rgba(255, 240, 150, 0.7)');
+      drawRay(Math.PI * 5 / 8, cx * 0.55, 4.5, 'rgba(255, 240, 150, 0.7)');
+      drawRay(-Math.PI * 5 / 8, cx * 0.55, 4.5, 'rgba(255, 240, 150, 0.7)');
+
+      tex.hasAlpha = true;
+      tex.update(false);
+      tex.wrapU = Texture.CLAMP_ADDRESSMODE;
+      tex.wrapV = Texture.CLAMP_ADDRESSMODE;
+      return tex;
+    } catch {
+      return null;
+    }
+  }
+
+  /**
    * Spawns a directional brick debris burst responding to impact direction.
    */
   public triggerDebris(position: Vector3, dir: Direction): void {
@@ -326,9 +604,9 @@ export class ProjectileSystem {
     }
     this.playerCooldownRemaining = 0;
     this.enemyCooldownRemaining = 0;
-    this.muzzleFlashTimer = 0;
-    if (this.muzzleFlashMesh) {
-      this.muzzleFlashMesh.setEnabled(false);
+    for (let i = 0; i < this.muzzleFlashPool.length; i++) {
+      this.muzzleFlashPool[i].active = false;
+      this.muzzleFlashPool[i].root.setEnabled(false);
     }
     for (let i = 0; i < this.impactPool.length; i++) {
       this.impactPool[i].active = false;
@@ -522,6 +800,7 @@ export class ProjectileSystem {
     );
 
     this.triggerMuzzleFlash(muzzlePos, dir, true);
+    (playerTank as any).triggerRecoil?.();
     const cooldown =
       this.combatModifiersProvider?.getPlayerFireCooldown?.() ??
       PROJECTILE_CONFIG.PLAYER_FIRE_COOLDOWN;
@@ -564,6 +843,7 @@ export class ProjectileSystem {
     );
 
     this.triggerMuzzleFlash(muzzlePos, dir, false);
+    (enemyTank as any).triggerRecoil?.();
     this.enemyCooldownRemaining = archetype.fireCooldown;
     this.onEnemyFireCallback?.();
 
@@ -571,25 +851,34 @@ export class ProjectileSystem {
   }
 
   /**
-   * Triggers compact directional muzzle flash flare at cannon tip.
+   * Triggers compact directional starburst muzzle flash flare at cannon tip.
    */
   private triggerMuzzleFlash(position: Vector3, dir: Direction = Direction.NORTH, isPlayer: boolean = true): void {
-    this.muzzleFlashMesh.position.copyFrom(position);
-    this.muzzleFlashMesh.setEnabled(true);
-    this.muzzleFlashTimer = 0.05;
-
-    // Directional orientation and tint
-    if (isPlayer) {
-      this.muzzleFlashMaterial.emissiveColor.set(0.4, 0.95, 1.0);
-    } else {
-      this.muzzleFlashMaterial.emissiveColor.set(1.0, 0.55, 0.1);
+    let flash = this.muzzleFlashPool.find((f) => !f.active);
+    if (!flash) {
+      flash = this.muzzleFlashPool.reduce(
+        (oldest, cur) => (cur.timer > oldest.timer ? cur : oldest),
+        this.muzzleFlashPool[0]
+      );
     }
+    if (!flash) return;
 
-    if (dir === Direction.NORTH || dir === Direction.SOUTH) {
-      this.muzzleFlashMesh.scaling.set(0.85, 0.85, 1.35);
-    } else {
-      this.muzzleFlashMesh.scaling.set(1.35, 0.85, 0.85);
+    flash.root.position.copyFrom(position);
+    flash.root.rotation.y = directionToRotation(dir);
+
+    const tex = isPlayer ? this.playerFlashTexture : this.enemyFlashTexture;
+    if (tex) {
+      flash.mat.diffuseTexture = tex;
+      flash.mat.emissiveTexture = tex;
+      flash.mat.opacityTexture = tex;
     }
+    flash.mat.alpha = 1.0;
+
+    flash.root.scaling.setAll(0.85);
+    flash.timer = 0;
+    flash.duration = 0.09;
+    flash.active = true;
+    flash.root.setEnabled(true);
   }
 
   /**
@@ -611,14 +900,27 @@ export class ProjectileSystem {
       }
     }
 
-    // 2. Update muzzle flash timer
-    if (this.muzzleFlashTimer > 0) {
-      this.muzzleFlashTimer -= deltaTime;
-      if (this.muzzleFlashTimer <= 0) {
-        this.muzzleFlashMesh.setEnabled(false);
-      } else {
-        const s = Math.max(0.2, this.muzzleFlashTimer / 0.05);
-        this.muzzleFlashMesh.scaling.setAll(s);
+    // 2. Update muzzle flash VFX pool
+    for (let i = 0; i < this.muzzleFlashPool.length; i++) {
+      const flash = this.muzzleFlashPool[i];
+      if (flash.active) {
+        flash.timer += deltaTime;
+        if (flash.timer >= flash.duration) {
+          flash.active = false;
+          flash.root.setEnabled(false);
+        } else {
+          const t = flash.timer / flash.duration;
+          if (t <= 0.3) {
+            const s = 0.85 + (t / 0.3) * 0.55; // Explosive burst from 0.85 to 1.40
+            flash.root.scaling.setAll(s);
+            flash.mat.alpha = 1.0;
+          } else {
+            const decay = (t - 0.3) / 0.7;
+            const s = 1.40 - decay * 0.85;
+            flash.root.scaling.setAll(Math.max(0.2, s));
+            flash.mat.alpha = Math.max(0.0, 1.0 - decay);
+          }
+        }
       }
     }
 
@@ -992,9 +1294,20 @@ export class ProjectileSystem {
     this.sharedPlayerBulletMaterial.dispose();
     this.sharedEnemyBulletMaterial.dispose();
 
-    // Muzzle flash
-    this.muzzleFlashMesh.dispose();
-    this.muzzleFlashMaterial.dispose();
+    // Muzzle flash pool & textures
+    for (let i = 0; i < this.muzzleFlashPool.length; i++) {
+      const f = this.muzzleFlashPool[i];
+      f.hPlane.dispose();
+      f.vPlane.dispose();
+      f.coneMesh.dispose();
+      f.mat.dispose();
+      f.root.dispose();
+    }
+    this.muzzleFlashPool = [];
+    if (this.playerBulletTexture) this.playerBulletTexture.dispose();
+    if (this.enemyBulletTexture) this.enemyBulletTexture.dispose();
+    if (this.playerFlashTexture) this.playerFlashTexture.dispose();
+    if (this.enemyFlashTexture) this.enemyFlashTexture.dispose();
 
     // Impacts
     for (let i = 0; i < this.impactPool.length; i++) {

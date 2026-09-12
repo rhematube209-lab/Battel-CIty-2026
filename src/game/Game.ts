@@ -358,11 +358,30 @@ export class Game {
     const keyLight = this.arena.getKeyLight();
     if (keyLight) {
       this.shadowGenerator = new ShadowGenerator(this.qualityProfile.shadowMapSize, keyLight);
-      this.shadowGenerator.useBlurExponentialShadowMap = true;
-      this.shadowGenerator.blurKernel = 16;
+      this.shadowGenerator.useBlurExponentialShadowMap = false;
+      this.shadowGenerator.usePercentageCloserFiltering = true;
+      this.shadowGenerator.filteringQuality = ShadowGenerator.QUALITY_HIGH;
+      this.shadowGenerator.bias = 0.0005;
+      this.shadowGenerator.normalBias = 0.01;
+      this.shadowGenerator.darkness = 0.08;
+
       this.playerTank.getMeshes().forEach((mesh) => {
         this.shadowGenerator?.addShadowCaster(mesh);
       });
+
+      // Major environment masses: Command Node foundation/collar
+      try {
+        const base = this.tileMap.getBase();
+        if (base) {
+          this.shadowGenerator.addShadowCaster(base.getBasePlatform());
+          this.shadowGenerator.addShadowCaster(base.getReactorMesh());
+        }
+      } catch {
+        // Base not present in standalone test maps
+      }
+
+      // Register all active brick quadrant instances and steel block instances
+      this.tileMap.registerShadowCasters(this.shadowGenerator);
     }
 
     // Initialize EnemyManager with active stage definition
