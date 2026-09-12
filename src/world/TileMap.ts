@@ -42,6 +42,7 @@ export class TileMap {
   private masterBush?: Mesh;
   private masterCryo?: Mesh;
   private masterConveyor?: Mesh;
+  private masterWater?: Mesh;
 
   // Shared materials
   private sharedMaterials: StandardMaterial[] = [];
@@ -429,6 +430,10 @@ export class TileMap {
     return this.masterBrickQuadrant;
   }
 
+  public getMasterWater(): Mesh | undefined {
+    return this.masterWater;
+  }
+
   /**
    * Registers all solid wall instances (brick quadrants and steel blocks) as shadow casters.
    */
@@ -647,6 +652,81 @@ export class TileMap {
     this.masterConveyor.name = 'masterConveyor';
     this.masterConveyor.material = conveyorMat;
     this.masterConveyor.setEnabled(false);
+
+    // 8. Water Coolant Canal Material & Master Mesh (Vibrant azure liquid with reflective sheen & dark canal curb)
+    const waterMat = new StandardMaterial('waterMat', this.scene);
+    waterMat.diffuseColor = new Color3(0.04, 0.45, 0.85); // Vibrant azure/cyan coolant water
+    waterMat.specularColor = new Color3(0.85, 0.95, 1.0); // Crisp reflective sheen
+    waterMat.specularPower = 64;
+    waterMat.emissiveColor = new Color3(0.02, 0.20, 0.40); // Luminous coolant flow glow
+    waterMat.alpha = 0.88;
+    this.sharedMaterials.push(waterMat);
+
+    const waterBasin = MeshBuilder.CreateBox(
+      'waterBasin',
+      {
+        width: TILE_SIZE * 0.96,
+        depth: TILE_SIZE * 0.96,
+        height: VISUAL_HEIGHTS.WATER,
+      },
+      this.scene
+    );
+
+    // Dark canal frame curbs (North, South, East, West)
+    const curbN = MeshBuilder.CreateBox(
+      'waterCurbN',
+      { width: TILE_SIZE * 0.96, depth: 0.08, height: VISUAL_HEIGHTS.WATER + 0.015 },
+      this.scene
+    );
+    curbN.position.set(0, 0.0075, (TILE_SIZE * 0.96) / 2 - 0.04);
+
+    const curbS = MeshBuilder.CreateBox(
+      'waterCurbS',
+      { width: TILE_SIZE * 0.96, depth: 0.08, height: VISUAL_HEIGHTS.WATER + 0.015 },
+      this.scene
+    );
+    curbS.position.set(0, 0.0075, -(TILE_SIZE * 0.96) / 2 + 0.04);
+
+    const curbW = MeshBuilder.CreateBox(
+      'waterCurbW',
+      { width: 0.08, depth: TILE_SIZE * 0.80, height: VISUAL_HEIGHTS.WATER + 0.015 },
+      this.scene
+    );
+    curbW.position.set(-(TILE_SIZE * 0.96) / 2 + 0.04, 0.0075, 0);
+
+    const curbE = MeshBuilder.CreateBox(
+      'waterCurbE',
+      { width: 0.08, depth: TILE_SIZE * 0.80, height: VISUAL_HEIGHTS.WATER + 0.015 },
+      this.scene
+    );
+    curbE.position.set((TILE_SIZE * 0.96) / 2 - 0.04, 0.0075, 0);
+
+    // Fluid surface flow bands
+    const flowBand1 = MeshBuilder.CreateBox(
+      'waterFlow1',
+      { width: TILE_SIZE * 0.76, depth: 0.16, height: VISUAL_HEIGHTS.WATER + 0.01 },
+      this.scene
+    );
+    flowBand1.position.set(0, 0.005, 0.30);
+
+    const flowBand2 = MeshBuilder.CreateBox(
+      'waterFlow2',
+      { width: TILE_SIZE * 0.76, depth: 0.16, height: VISUAL_HEIGHTS.WATER + 0.01 },
+      this.scene
+    );
+    flowBand2.position.set(0, 0.005, -0.30);
+
+    this.masterWater = Mesh.MergeMeshes(
+      [waterBasin, curbN, curbS, curbW, curbE, flowBand1, flowBand2],
+      true,
+      true,
+      undefined,
+      false,
+      true
+    ) as Mesh;
+    this.masterWater.name = 'masterWater';
+    this.masterWater.material = waterMat;
+    this.masterWater.setEnabled(false);
   }
 
   /**
@@ -710,6 +790,10 @@ export class TileMap {
 
           case TileType.CONVEYOR:
             this.buildConveyorTile(tile);
+            break;
+
+          case TileType.WATER:
+            this.buildWaterTile(tile);
             break;
 
           case TileType.EMPTY:
@@ -805,7 +889,15 @@ export class TileMap {
     tile.mesh = instance;
   }
 
-
+  /**
+   * Instantiates a liquid coolant canal / water moat using hardware instances.
+   */
+  private buildWaterTile(tile: Tile): void {
+    if (!this.masterWater) return;
+    const instance = this.masterWater.createInstance(`water_${tile.row}_${tile.column}`);
+    instance.position.set(tile.worldPosition.x, VISUAL_HEIGHTS.WATER / 2, tile.worldPosition.z);
+    tile.mesh = instance;
+  }
 
   /**
    * Subtly visualizes spawn points on the floor with neon tactical frames.
@@ -874,6 +966,10 @@ export class TileMap {
     if (this.masterConveyor) {
       this.masterConveyor.dispose();
       this.masterConveyor = undefined;
+    }
+    if (this.masterWater) {
+      this.masterWater.dispose();
+      this.masterWater = undefined;
     }
 
     this.debugMeshes.forEach((mesh) => mesh.dispose());

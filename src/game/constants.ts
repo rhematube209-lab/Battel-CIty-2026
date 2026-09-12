@@ -49,6 +49,7 @@ export const VISUAL_HEIGHTS = {
   SPAWN_MARKER: 0.02,
   CRYO: 0.04,
   CONVEYOR: 0.04,
+  WATER: 0.06,
 };
 
 export const CONVEYOR_PUSH_SPEED = 2.0; // 2.0 world units per second directional transport
@@ -87,6 +88,7 @@ export const COLORS = {
   STEEL_METALLIC: '#8fa0b0',
   BUSH_GREEN: '#10b981',
   BASE_CORE: '#00d2ff',
+  WATER_CYAN: '#0284c7',
   // Player Tank Palette
   PLAYER_CHASSIS: '#222f3e',
   PLAYER_ARMOR: '#34495e',
