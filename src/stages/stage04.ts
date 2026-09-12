@@ -61,19 +61,19 @@ export const STAGE_04_DEFINITION: StageDefinition = {
   ],
 
   stageTheme: {
-    floorColor: '#0a0d18',
-    borderColor: '#16243b',
-    accentColor: '#00e5ff',
+    floorColor: '#11151c',
+    borderColor: '#1f2937',
+    accentColor: '#00d2ff',
   },
 
   presentation: {
-    ambientColor: '#0a0e1a',
-    accentColor: '#00e5ff',
-    secondaryAccentColor: '#7b2cbf',
+    ambientColor: '#11151c',
+    accentColor: '#00d2ff',
+    secondaryAccentColor: '#ff8c00',
     hazardColor: '#ffaa00',
-    pulseEnabled: true,
+    pulseEnabled: false,
     pulseRate: 2.2,
-    floorTheme: 'NEXUS',
+    floorTheme: 'DEFAULT',
     stageAudioProfile: 'NEXUS',
   },
 

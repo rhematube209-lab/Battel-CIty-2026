@@ -136,14 +136,11 @@ const stage04Mod = transpileAndLoad('src/stages/stage04.ts');
 
 const stage04 = stage04Mod.STAGE_04_DEFINITION;
 assert(stage04 !== undefined, 'Stage 04 definition exists');
-assert(stage04.presentation !== undefined, 'Stage 04 has presentation metadata');
-assert(stage04.presentation.floorTheme === 'NEXUS', 'Stage 04 floorTheme is "NEXUS"');
-assert(stage04.presentation.accentColor === '#00e5ff', 'Stage 04 accentColor is cold cyan "#00e5ff"');
-assert(stage04.presentation.secondaryAccentColor === '#7b2cbf', 'Stage 04 secondaryAccentColor is electric violet "#7b2cbf"');
-assert(stage04.presentation.hazardColor === '#ffaa00', 'Stage 04 hazardColor is amber "#ffaa00"');
-assert(stage04.presentation.pulseEnabled === true, 'Stage 04 pulseEnabled is true');
-assert(stage04.presentation.pulseRate === 2.2, 'Stage 04 pulseRate is 2.2s');
-assert(stage04.presentation.stageAudioProfile === 'NEXUS', 'Stage 04 stageAudioProfile is "NEXUS"');
+assert(stage04.presentation.floorTheme === 'DEFAULT', 'Stage 04 floorTheme matches baseline "DEFAULT" (same look as Stage 01)');
+assert(stage04.stageTheme.floorColor === '#11151c', 'Stage 04 stageTheme floorColor matches Stage 01');
+assert(stage04.stageTheme.borderColor === '#1f2937', 'Stage 04 stageTheme borderColor matches Stage 01');
+assert(stage04.stageTheme.accentColor === '#00d2ff', 'Stage 04 stageTheme accentColor matches Stage 01');
+assert(stage04.presentation.pulseEnabled === false, 'Stage 04 pulseEnabled is false (unified steady baseline)');
 
 // Stages 01–03 baseline protection
 const stage01 = stage01Mod.STAGE_01_DEFINITION;
