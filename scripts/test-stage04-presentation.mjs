@@ -249,7 +249,7 @@ assert(audioCtxOccurrences <= 1, `Exactly 1 AudioContext instantiated (found ${a
 // Test Suite 6: Pause Simulation Freeze & Audio Isolation
 // =========================================================================
 console.log('\nTest Suite 6: Pause Simulation & Audio Isolation (Req 19, 33)');
-const gameSource = readFileSync('src/game/Game.ts', 'utf-8');
+const gameSource = readFileSync('src/game/Game.ts', 'utf-8').replace(/\r\n/g, '\n');
 assert(gameSource.includes('if (this.gameState === GameState.PLAYING) {'), 'Game render loop branches strictly on GameState.PLAYING');
 assert(gameSource.includes('} else if (this.gameState === GameState.PAUSED || this.gameState === GameState.MAIN_MENU) {'), 'Paused state has dedicated zero-delta branch');
 assert(gameSource.includes('this.camera.position.copyFrom(this.baseCameraPosition)'), 'Camera copy in paused state');

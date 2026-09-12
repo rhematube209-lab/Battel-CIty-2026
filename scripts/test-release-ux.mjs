@@ -699,7 +699,7 @@ console.log('\nTest Suite 9 & 10: Game Flow: Boot to MAIN_MENU & Start Campaign 
 console.log('\nTest Suite 11 & 12: Game Flow: Pause & Simulation Freeze Guarantee (Req 81, 82)');
 {
   const { GameState } = transpileAndRequire('src/game/GameState.ts');
-  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8');
+  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8').replace(/\r\n/g, '\n');
 
   // Verify render loop strictly gates simulation when PAUSED or MAIN_MENU
   assert(gameSource.includes('this.projectileSystem.update(dt);') && gameSource.includes('else if (this.gameState === GameState.PAUSED || this.gameState === GameState.MAIN_MENU) {\n        // In PAUSED or MAIN_MENU: STRICTLY ZERO SIMULATION DELTA'), 'projectileSystem.update(dt) strictly guarded inside GameState.PLAYING and frozen during PAUSED/MAIN_MENU');
@@ -725,7 +725,7 @@ console.log('\nTest Suite 11 & 12: Game Flow: Pause & Simulation Freeze Guarante
 console.log('\nTest Suite 13 & 14: Game Flow: Restart & Return to Title (Req 83, 84)');
 {
   const { CampaignSession } = transpileAndRequire('src/game/CampaignSession.ts');
-  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8');
+  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8').replace(/\r\n/g, '\n');
 
   // Verify restartStage logic restores checkpoint entry lives
   assert(gameSource.includes('this.playerLives = this.campaignSession.getStageEntryLives();'), 'restartStage restores stage entry checkpoint lives');
@@ -744,7 +744,7 @@ console.log('\nTest Suite 13 & 14: Game Flow: Restart & Return to Title (Req 83,
 // -------------------------------------------------------------
 console.log('\nTest Suite 15: Game Flow: Visibility Auto-Pause (Req 85)');
 {
-  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8');
+  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8').replace(/\r\n/g, '\n');
   assert(gameSource.includes('if (document.hidden && this.gameState === GameState.PLAYING) {\n        this.pauseGame();\n      }'), 'document.hidden triggers pauseGame() when PLAYING');
   assert(!gameSource.includes('else {\n        this.resumeGame();\n      }'), 'Game NEVER auto-unpauses when returning from hidden');
 }
@@ -754,7 +754,7 @@ console.log('\nTest Suite 15: Game Flow: Visibility Auto-Pause (Req 85)');
 // -------------------------------------------------------------
 console.log('\nTest Suite 16: Escape Key Priority Hierarchy (Req 86)');
 {
-  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8');
+  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8').replace(/\r\n/g, '\n');
 
   // Hierarchy validation:
   // 1. Confirm dialog open -> close confirm dialog
@@ -879,7 +879,7 @@ console.log('\nTest Suite 19: Phase 1-17 Full 3-Stage Campaign Progression Regre
 // -------------------------------------------------------------
 console.log('\nTest Suite 20: Render Loop Audio Architecture & Zero 60 FPS Side-Effects (Req 1, 2, 3)');
 {
-  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8');
+  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8').replace(/\r\n/g, '\n');
 
   // Verify render loop strictly does NOT call stopAllLoops()
   const renderLoopMatch = gameSource.match(/startRenderLoop\(\): void \{([\s\S]*?)\n  \}/);
@@ -924,7 +924,7 @@ console.log('\nTest Suite 20: Render Loop Audio Architecture & Zero 60 FPS Side-
 console.log('\nTest Suite 21: Full R-Key State Matrix Test (Req 4, 5, 6)');
 {
   const { GameState } = transpileAndRequire('src/game/GameState.ts');
-  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8');
+  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8').replace(/\r\n/g, '\n');
 
   // Verify safe state gating pattern in Game.ts
   assert(gameSource.includes('if (this.isSubmodalOpen()) return;'), 'R restart is gated when submodals/confirmation are open');
@@ -1111,7 +1111,7 @@ console.log('\nTest Suite 24: Responsive Mobile Camera Framing While Paused (Req
   assert(Math.abs(mobileNarrowFraming.distanceOffsetZ - (CAMERA_CONFIG.DISTANCE_OFFSET_Z * expectedScale)) < 1e-6, 'Mobile camera distance scaled accurately');
 
   // 3. Verify baseCameraPosition retention in Game.ts
-  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8');
+  const gameSource = fs.readFileSync('src/game/Game.ts', 'utf8').replace(/\r\n/g, '\n');
   assert(gameSource.includes('this.baseCameraPosition.set(0, framing.height, framing.distanceOffsetZ);'), 'baseCameraPosition captures responsive framing height and distance');
   assert(gameSource.includes('this.camera.position.copyFrom(this.baseCameraPosition);'), 'PAUSED state restores camera to responsive baseCameraPosition (no hardcoded desktop snap)');
 }

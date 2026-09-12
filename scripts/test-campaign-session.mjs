@@ -631,7 +631,7 @@ console.log('\nTest Suite 24: Overlay Visibility & Non-Occlusion Guarantees (Pha
   assert(html.includes('id="stageCompleteOverlay" class="stage-complete-overlay hidden" style="display: none;"'), 'index.html defines #stageCompleteOverlay with hidden class and style="display: none;"');
   assert(html.includes('id="gameOverOverlay" class="game-over-overlay hidden" style="display: none;"'), 'index.html defines #gameOverOverlay with hidden class and style="display: none;"');
 
-  const css = fs.readFileSync('src/style.css', 'utf8');
+  const css = fs.readFileSync('src/style.css', 'utf8').replace(/\r\n/g, '\n');
   assert(css.includes('.campaign-complete-overlay.hidden {\n  display: none !important;'), 'style.css sets display: none !important on .campaign-complete-overlay.hidden');
   assert(css.includes('.stage-complete-overlay.hidden {\n  display: none !important;'), 'style.css sets display: none !important on .stage-complete-overlay.hidden');
   assert(css.includes('.game-over-overlay.hidden {\n  display: none !important;'), 'style.css sets display: none !important on .game-over-overlay.hidden');
